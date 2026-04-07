@@ -13,6 +13,7 @@
 \setlength{\headheight}{14.5pt} % Fix fancyhdr warning
 % Custom citep command for biblatex
 \newcommand{\citep}{\parencite}
+\newcommand{\citet}{\textcite}
 \fancyhead[R]{\textbf{pg\_gpu}}
 % for figures
 \usepackage{graphicx}
@@ -97,26 +98,44 @@ as the Anopheles 1000 Genomes \citep{ag1000g2017} and UK Biobank
 \citep{bycroft2018}---the computational cost of these analyses has become a
 serious bottleneck.
 
-Existing software libraries for computing population genetics statistics, most
-notably \texttt{scikit-allel} \citep{miles2024}, operate entirely on the CPU
-and process statistics one at a time across genomic windows. While these tools
-have been invaluable, their serial design means that analysis times scale
-linearly with both the number of samples and the number of statistics computed.
-For large-scale projects involving windowed genome scans of multiple statistics
-across many populations, wall-clock times of hours to days are common. This
-limitation is particularly acute for two-locus statistics such as LD, where
-pairwise computations over variant sites are inherently $O(n^2)$ and form a
-bottleneck in inference pipelines such as \texttt{moments}
-\citep{jouganous2017}.
+A number of software tools have been developed to compute population genetics
+statistics from genomic data. VCFtools \citep{danecek2011} was among the first
+general-purpose tools, providing command-line access to diversity, $F_{ST}$,
+and LD calculations from VCF files, but was designed for the sample sizes of
+the early 1000 Genomes era. \texttt{scikit-allel} \citep{miles2024} brought
+these analyses into the Python ecosystem with NumPy-based array operations,
+offering a broader repertoire of statistics including haplotype-based selection
+scans and $F$-statistics; however, it is no longer under active development.
+\texttt{pixy} \citep{korunes2021} addressed the important problem of missing
+data bias in estimates of $\pi$, $d_{XY}$, and $F_{ST}$, but is limited to
+those three statistics. At the other end of the spectrum, PLINK
+\citep{purcell2007, chang2015} and ANGSD \citep{korneliussen2014} are
+high-performance C/C++ tools but are oriented toward GWAS and genotype
+likelihood workflows, respectively, rather than the summary statistics used in
+evolutionary population genetics. PopGenome \citep{pfeifer2014} offered a
+comprehensive R-based toolkit but has been removed from CRAN and is no longer
+maintained. For tree sequence data, tskit \citep{jeffery2026} provides
+exceptionally efficient computation of a general class of statistics, but
+requires data in tree sequence format rather than the VCF and Zarr formats
+that remain the standard output of variant calling pipelines. Across all of
+these tools, computation is performed on the CPU and statistics are typically
+computed one at a time across genomic windows. For large-scale projects
+involving windowed genome scans of multiple statistics across many populations,
+wall-clock times of hours to days are common. This limitation is particularly
+acute for two-locus statistics such as LD, where pairwise computations over
+variant sites are inherently $O(n^2)$ and form a bottleneck in inference
+pipelines such as \texttt{moments} \citep{jouganous2017}.
 
 Modern graphics processing units (GPUs) offer massive parallelism that is
 well-suited to the data-parallel structure of population genetics computation.
 Many statistics reduce to operations over matrices of haplotypes or genotypes
 that can be decomposed into independent per-site or per-window calculations,
-making them natural candidates for GPU acceleration. The success of GPU
-computing in fields such as deep learning and molecular dynamics suggests that
-similar gains are achievable in population genetics, yet no general-purpose
-GPU-accelerated library for population genetics statistics has been available.
+making them natural candidates for GPU acceleration. While GPUs have been
+applied to specific problems in population genetics---notably forward-in-time
+simulation \citep{gofish2017} and demographic inference via diffusion
+approximations \citep{gutenkunst2021}---no general-purpose GPU-accelerated
+library for computing population genetics summary statistics from empirical
+data has been available.
 
 Here we present \pggpu, a Python library that leverages NVIDIA GPUs via CuPy
 \citep{cupy2017} to compute a comprehensive catalog of population genetics
