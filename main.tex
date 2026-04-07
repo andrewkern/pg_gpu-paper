@@ -1,0 +1,298 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[letterpaper,margin=1.0in]{geometry}
+%% Some formatting stuff
+\usepackage{authblk}
+\usepackage{fancyhdr}
+%\usepackage{lineno}
+\usepackage{siunitx}
+\usepackage{hyperref}
+\usepackage{booktabs, array, longtable}
+\usepackage{multirow}
+\pagestyle{fancy}
+\setlength{\headheight}{14.5pt} % Fix fancyhdr warning
+% Custom citep command for biblatex
+\newcommand{\citep}{\parencite}
+\fancyhead[R]{\textbf{pg\_gpu}}
+% for figures
+\usepackage{graphicx}
+\usepackage{wrapfig}
+\usepackage{float}
+\usepackage{breakcites}
+\usepackage{nameref}
+\usepackage{amsmath}
+\usepackage{xspace}
+
+\graphicspath{ {./figures/} }
+
+\newcommand{\comment}[1]{{\color{blue} #1}}
+\newcommand{\pggpu}{\texttt{pg\_gpu}\xspace}
+
+% for hyperlinks
+\hypersetup{
+    colorlinks=true,
+    citecolor=black,
+    urlcolor=cyan,
+    linkcolor=blue
+    }
+\urlstyle{same}
+
+% for highlighting text
+\usepackage{xcolor}
+\usepackage{soul}
+\usepackage{tikz}
+
+% code listings
+\usepackage{listings}
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    language=Python
+}
+
+% bibliography
+\usepackage[backend=biber,style=authoryear]{biblatex}
+\addbibresource{refs.bib}
+
+%\linenumbers
+\renewcommand*{\bibfont}{\fontsize{10}{12}\selectfont}
+
+\newcommand{\beginsupplement}{%
+    \setcounter{table}{0}
+    \renewcommand{\thetable}{S\arabic{table}}%
+    \setcounter{figure}{0}
+    \renewcommand{\thefigure}{S\arabic{figure}}%
+    \renewcommand{\theHtable}{supp.\arabic{table}}%
+    \renewcommand{\theHfigure}{supp.\arabic{figure}}%
+}
+
+\title{GPU accelerated population genetics statistics using \texttt{pg\_gpu}}
+\author[1, 2]{TODO Authors}
+\author[1, 2]{Nathaniel S. Pope}
+\author[1, 2, *]{Andrew D. Kern}
+\affil[1]{\small{University of Oregon, Institute of Ecology and Evolution}}
+\affil[2]{\small{University of Oregon, Department of Biology}}
+\affil[*]{\small{Corresponding author: \href{mailto:adkern@uoregon.edu}{adkern@uoregon.edu}}}
+
+\date{\small{\today{}}}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+TODO: Abstract goes here.
+\end{abstract}
+
+\section*{Introduction}
+
+Population genetics relies on a rich toolkit of summary statistics to characterize
+genetic variation within and between populations. Statistics such as nucleotide
+diversity ($\pi$), Tajima's $D$, $F_{ST}$, and linkage disequilibrium (LD) are
+foundational to studies of demographic history, natural selection, population
+structure, and admixture. As whole-genome sequencing datasets have grown from
+hundreds to hundreds of thousands of individuals---exemplified by projects such
+as the Anopheles 1000 Genomes \citep{ag1000g2017} and UK Biobank
+\citep{bycroft2018}---the computational cost of these analyses has become a
+serious bottleneck.
+
+Existing software libraries for computing population genetics statistics, most
+notably \texttt{scikit-allel} \citep{miles2024}, operate entirely on the CPU
+and process statistics one at a time across genomic windows. While these tools
+have been invaluable, their serial design means that analysis times scale
+linearly with both the number of samples and the number of statistics computed.
+For large-scale projects involving windowed genome scans of multiple statistics
+across many populations, wall-clock times of hours to days are common. This
+limitation is particularly acute for two-locus statistics such as LD, where
+pairwise computations over variant sites are inherently $O(n^2)$ and form a
+bottleneck in inference pipelines such as \texttt{moments}
+\citep{jouganous2017}.
+
+Modern graphics processing units (GPUs) offer massive parallelism that is
+well-suited to the data-parallel structure of population genetics computation.
+Many statistics reduce to operations over matrices of haplotypes or genotypes
+that can be decomposed into independent per-site or per-window calculations,
+making them natural candidates for GPU acceleration. The success of GPU
+computing in fields such as deep learning and molecular dynamics suggests that
+similar gains are achievable in population genetics, yet no general-purpose
+GPU-accelerated library for population genetics statistics has been available.
+
+Here we present \pggpu, a Python library that leverages NVIDIA GPUs via CuPy
+\citep{cupy2017} to compute a comprehensive catalog of population genetics
+statistics. \pggpu implements over 70 functions spanning diversity, divergence,
+the site frequency spectrum, linkage disequilibrium, haplotype-based selection
+scans, admixture statistics, PCA, and relatedness---covering the large majority
+of statistics in routine use. The library introduces fused CUDA kernels that
+compute multiple statistics in a single pass over the data, and implements the
+generalized theta framework of \citet{achaz2009} to efficiently derive all
+standard diversity and neutrality test statistics from a single site frequency
+spectrum computation. \pggpu provides a drop-in replacement for the LD parsing
+module of \texttt{moments}, achieving up to 275-fold speedups while maintaining
+numerical accuracy at machine precision. Across windowed genome scans, \pggpu
+delivers up to 60-fold speedups relative to \texttt{scikit-allel}. \pggpu is
+open source and freely available at
+\url{https://github.com/kr-colab/pg_gpu}.
+
+\section*{Design and Implementation}
+
+TODO: Describe the design and implementation of \pggpu.
+
+\section*{Features}
+
+\pggpu provides a comprehensive catalog of population genetics statistics
+organized into ten categories (Table~\ref{tab:features}). A complete listing of
+all implemented statistics with citations is provided in the Supplementary
+Material (Table~\ref{tab:full_catalog}).
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Summary of statistics implemented in \pggpu. The full catalog with
+citations is provided in Supplementary Table~\ref{tab:full_catalog}.}
+\label{tab:features}
+\begin{tabular}{llp{5.5cm}}
+\toprule
+\textbf{Category} & \textbf{Count} & \textbf{Representative statistics} \\
+\midrule
+Diversity \& neutrality tests & 20+ & $\pi$, $\theta_W$, $\theta_H$, Tajima's $D$, Fay \& Wu's $H$ \\
+Divergence & 10+ & $F_{ST}$ (Hudson; Weir--Cockerham), $d_{XY}$, $D_a$, PBS \\
+Linkage disequilibrium & 10+ & $r^2$, $D^2$, $D_z$, $\pi_2$, $Z_{nS}$, $\omega$ \\
+Selection scans & 8 & iHS, nSL, XP-EHH, $H_{12}$, $H_{2}/H_{1}$ \\
+Site frequency spectrum & 6+ & Unfolded, folded, scaled, joint (2-pop) SFS \\
+Admixture / $F$-statistics & 6+ & Patterson's $F_2$, $F_3$, $D$ (ABBA-BABA) \\
+Dimensionality reduction & 3 & PCA, randomized PCA, PCoA \\
+Relatedness / kinship & 2 & GRM (GCTA-equivalent), IBS (PLINK-equivalent) \\
+Distance distribution & 4 & Hamming distance, variance, skewness, kurtosis \\
+Achaz framework & -- & Generalized $\theta$ estimators via SFS weight vectors \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+TODO: Describe the features and statistics available in \pggpu.
+
+\section*{Performance}
+
+TODO: Benchmarks and performance comparisons.
+
+\section*{Example Usage}
+
+TODO: Example usage and workflows.
+
+\section*{Discussion}
+
+TODO: Discussion goes here.
+
+\section*{Availability}
+
+\pggpu is freely available at \url{https://github.com/kr-colab/pg_gpu}.
+
+\section*{Acknowledgments}
+
+TODO: Acknowledgments go here.
+
+\printbibliography
+
+\clearpage
+\beginsupplement
+
+\section*{Supplementary Material}
+
+\begin{longtable}{lll}
+\caption{Complete catalog of statistics implemented in \pggpu.}
+\label{tab:full_catalog} \\
+\toprule
+\textbf{Category} & \textbf{Statistic} & \textbf{Reference} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Category} & \textbf{Statistic} & \textbf{Reference} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r}{\textit{Continued on next page}} \\
+\bottomrule
+\endfoot
+\bottomrule
+\endlastfoot
+
+% Diversity & neutrality tests
+\multirow{12}{*}{Diversity} & Nucleotide diversity ($\pi$) & \citep{nei1979} \\
+ & Watterson's $\theta_W$ & \citep{watterson1975} \\
+ & Fay \& Wu's $\theta_H$ & \citep{fay2000} \\
+ & Zeng's $\theta_L$ & \citep{zeng2006} \\
+ & Tajima's $D$ & \citep{tajima1989} \\
+ & Fay \& Wu's $H$, normalized $H^*$ & \citep{zeng2006} \\
+ & Zeng's $E$ & \citep{zeng2006} \\
+ & Segregating sites, singletons & -- \\
+ & Haplotype diversity, count & -- \\
+ & Expected / observed heterozygosity & -- \\
+ & Wright's $F$ & \citep{wright1951} \\
+ & Max DAF, DAF histogram & -- \\
+\midrule
+
+% Divergence
+\multirow{10}{*}{Divergence} & $F_{ST}$ (Hudson) & \citep{hudson1992} \\
+ & $F_{ST}$ (Weir--Cockerham) & \citep{weir1984} \\
+ & $G_{ST}$ & \citep{nei1973} \\
+ & $d_{XY}$ & \citep{nei1987} \\
+ & $D_a$ (net divergence) & \citep{nei1979} \\
+ & PBS & \citep{yi2010} \\
+ & $S_{nn}$ & \citep{hudson2000} \\
+ & $G_{\min}$ & \citep{geneva2015} \\
+ & $d_d$, $d_d$ rank & \citep{schrider2018} \\
+ & $Z_x$ & \citep{schrider2018} \\
+\midrule
+
+% Linkage disequilibrium
+\multirow{8}{*}{LD} & $r$, $r^2$ & -- \\
+ & $D^2$, $D_z$, $\pi_2$ & \citep{ragsdale2020} \\
+ & $\sigma_d^2$ (unbiased) & \citep{ragsdale2020} \\
+ & Kelly's $Z_{nS}$ & \citep{kelly1997} \\
+ & Kim \& Nielsen's $\omega$ & \citep{kim2004} \\
+ & $\mu_{\mathrm{LD}}$ (RAiSD) & \citep{alachiotis2018} \\
+ & Fused windowed LD & -- \\
+ & \texttt{moments} drop-in LD parsing & -- \\
+\midrule
+
+% Selection scans
+\multirow{6}{*}{Selection} & iHS & \citep{voight2006} \\
+ & nSL & \citep{ferrer-admetlla2014} \\
+ & XP-EHH & \citep{sabeti2007} \\
+ & XP-nSL & \citep{szpiech2021} \\
+ & $H_1$, $H_{12}$, $H_{123}$, $H_2/H_1$ & \citep{garud2015} \\
+ & EHH decay & \citep{sabeti2002} \\
+\midrule
+
+% SFS
+\multirow{3}{*}{SFS} & Unfolded / folded SFS & -- \\
+ & Scaled SFS & -- \\
+ & Joint (2-population) SFS & -- \\
+\midrule
+
+% Admixture / F-statistics
+\multirow{3}{*}{Admixture} & Patterson's $F_2$ & \citep{patterson2012} \\
+ & Patterson's $F_3$ & \citep{patterson2012} \\
+ & Patterson's $D$ (ABBA-BABA) & \citep{patterson2012} \\
+\midrule
+
+% Dimensionality reduction
+\multirow{3}{*}{Dim.\ reduction} & PCA & \citep{patterson2006} \\
+ & Randomized PCA & \citep{halko2011} \\
+ & PCoA (classical MDS) & -- \\
+\midrule
+
+% Relatedness
+\multirow{2}{*}{Relatedness} & GRM & \citep{yang2011} \\
+ & IBS & -- \\
+\midrule
+
+% Distance distribution
+\multirow{4}{*}{Distance dist.} & Pairwise Hamming distance & -- \\
+ & Variance of distances & \citep{schrider2018} \\
+ & Skewness of distances & \citep{schrider2018} \\
+ & Excess kurtosis of distances & \citep{schrider2018} \\
+
+\end{longtable}
+
+\end{document}
