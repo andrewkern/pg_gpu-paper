@@ -171,13 +171,29 @@ Achaz framework & -- & Generalized $\theta$ estimators via SFS weight vectors \\
 
 TODO: Describe the features and statistics available in \pggpu.
 
-\section*{Performance}
+\section*{Results}
 
-TODO: Benchmarks and performance comparisons.
+\subsection*{Numerical accuracy}
 
-\section*{Example Usage}
+TODO: Validation of \pggpu against established tools (scikit-allel, moments, PLINK)
+using Ag1000G data. Report maximum relative error across statistic categories.
 
-TODO: Example usage and workflows.
+\subsection*{Performance benchmarks}
+
+TODO: Wall-clock comparisons of \pggpu vs.\ scikit-allel for windowed genome scans
+($\pi$, $\theta_W$, Tajima's $D$, $F_{ST}$, $d_{XY}$) across window sizes.
+LD parsing benchmarks vs.\ moments. PCA/GRM benchmarks vs.\ PLINK.
+
+\subsection*{Scaling}
+
+TODO: Runtime scaling with number of samples and number of variants.
+GPU memory usage at different dataset sizes.
+Advantage of fused multi-statistic computation vs.\ serial single-statistic passes.
+
+\subsection*{Application to Ag1000G}
+
+TODO: End-to-end analysis on Ag1000G data demonstrating a complete workflow:
+data loading, windowed statistics, selection scans, PCA, and total runtime.
 
 \section*{Discussion}
 
