@@ -194,6 +194,43 @@ TODO: Describe the features and statistics available in \pggpu.
 
 \section*{Results}
 
+We organize the empirical evaluation of \pggpu around four questions:
+do the GPU implementations agree numerically with established CPU
+tools, how fast are they on real data, how do they scale to
+biobank-sized samples and genome-wide variant counts, and can a
+researcher use them in an end-to-end workflow without writing GPU
+code? Figure~\ref{fig:overview} previews the answer on a single
+chromosome of phased Ag1000G data: \pggpu reproduces $\pi$, an
+$R_0$-style heterozygosity ratio, and Tajima's $D$ along the genome
+indistinguishably from scikit-allel, and computes the same windowed
+diversity statistics and LD-decay summary in a small fraction of the
+time.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.95\textwidth]{scikit_allel_comparison.png}
+\caption{At-a-glance comparison of \pggpu and scikit-allel on a
+single chromosome of phased Ag1000G data. Top three panels:
+nucleotide diversity ($\pi$), $R_0$, and Tajima's $D$ in 50\,kb
+windows along the chromosome, computed by both tools---the curves
+overlay to within line width. Lower panel: LD-decay (mean $r^2$ vs
+pairwise distance) showing identical estimates from scikit-allel
+and the two \pggpu LD estimators (Rogers--Huff and unbiased
+$\sigma_d^2$). Horizontal bars at the bottom report wall-clock
+times: scikit-allel windowed scan vs.\ \pggpu windowed scan
+($5.8\times$ faster), and scikit-allel LD-decay vs.\ \pggpu LD-decay
+($254\times$ faster).}
+\label{fig:overview}
+\end{figure}
+
+The remainder of the section quantifies these claims systematically.
+We benchmark numerical agreement against scikit-allel and PLINK2,
+report wall-clock comparisons on a full chromosome arm against
+scikit-allel and on multi-population LD parsing against
+\texttt{moments}, characterize runtime scaling along sample-size and
+variant-count axes, and demonstrate an end-to-end whole-arm Ag1000G
+workflow.
+
 \subsection*{Numerical accuracy}
 
 We validated \pggpu against scikit-allel using a 4\,Mb region of Ag1000G
