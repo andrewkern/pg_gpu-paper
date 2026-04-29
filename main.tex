@@ -188,18 +188,26 @@ Most population-genetics statistics decompose into per-site or
 per-pair reductions whose CPU implementations are bandwidth-bound:
 each pass over the haplotype matrix reads tens of gigabytes of memory
 to emit a handful of summary scalars. \pggpu exploits this by writing
-\emph{fused} kernels that read each input element once and emit all
-relevant statistics from registers. For example,
-\texttt{windowed\_statistics\_fused} computes $\pi$, $\theta_W$,
-Tajima's $D$, $\theta_H$, Fay--Wu's $H$, and segregating-site counts
-in a single pass with one kernel launch per chromosome arm; the
-two-population variant of the same kernel additionally produces
-Hudson's $F_{ST}$, Weir--Cockerham $F_{ST}$, $d_{XY}$, and $d_a$.
-Two-locus statistics ($D^2$, $Dz$, $\pi_2$, $r^2$, $D'$, Pearson
-$r$) share a count-based kernel family that takes the four
-haplotype-pair counts $(n_{AB}, n_{Ab}, n_{aB}, n_{ab})$ and the
-sample-size vector and emits any subset of the scalar formulas in
-double precision in a single thread per output.
+\emph{fused} kernels that read each input element once and emit
+\emph{any subset} of a related family of statistics from registers
+in a single launch. The user-facing entry point
+\texttt{windowed\_analysis} accepts a Python list of statistic names
+and dispatches the request to the smallest set of fused kernels that
+covers it: a single-population kernel produces any combination of
+$\pi$, $\theta_W$, $\theta_H$, $\theta_L$, Tajima's $D$, Fay \& Wu's
+$H$ (raw and normalized), Zeng's $E$, the maximum DAF estimator,
+segregating-site counts, and singleton counts; a two-population
+kernel additionally produces Hudson's $F_{ST}$, Weir--Cockerham
+$F_{ST}$, $d_{XY}$, and $d_a$. Statistics that depend on
+haplotype-pattern hashing (Garud's $H_1$, $H_{12}$, $H_{123}$,
+$H_2/H_1$) and scatter-add reductions (mean nSL, DAF histogram,
+$\mu_\text{SFS}$, per-window $Z_{nS}$ and $\omega$, $\mu_{\mathrm{LD}}$,
+SNP-distance moments) reuse the same window-binning infrastructure
+through dedicated kernel families. Two-locus statistics ($D^2$,
+$Dz$, $\pi_2$, $r^2$, $D'$, Pearson $r$) share a count-based kernel
+that takes the four haplotype-pair counts $(n_{AB}, n_{Ab}, n_{aB},
+n_{ab})$ and the sample-size vector and emits any subset of the
+scalar formulas in double precision in a single thread per output.
 
 \subsection*{Memory-aware chunking}
 
