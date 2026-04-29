@@ -398,16 +398,18 @@ To quantify the speedup attainable on real data we benchmarked \pggpu
 against scikit-allel on the entire Ag1000G Phase 3 chromosome 3R arm
 (2{,}940 haplotypes, 10.9 million variants). For the 22 statistics with
 a directly comparable scikit-allel implementation the median speedup is
-$22\times$ and the maximum is $209\times$ for Weir--Cockerham $F_{ST}$
-(Figure~\ref{fig:speedups}). The largest gains are seen for two-sample
-divergence and admixture statistics ($F_{ST}$, $d_{XY}$, Patterson's
-$F_2/F_3/D$; $70$--$209\times$), reflecting the tight coupling between
-allele-count tabulation and pairwise reduction in the fused kernels.
-Haplotype-based selection scans (iHS, nSL, ehh\_decay, Garud's $H$)
-realize smaller but still substantial speedups ($1$--$20\times$); these
-statistics already enjoy efficient C extensions inside scikit-allel and
-the GPU advantage is bounded by the inherently per-haplotype work.
-Absolute wall-clock comparisons are reported in
+$80\times$ and the maximum is $812\times$ for Weir--Cockerham $F_{ST}$
+(Figure~\ref{fig:speedups}). The largest gains are seen for
+heterozygosity and divergence statistics ($617\times$ for observed
+heterozygosity, $812\times$ for Weir--Cockerham $F_{ST}$, $270\times$
+for the inbreeding coefficient, $211\times$ for the unfolded SFS),
+reflecting the tight coupling between allele-count tabulation and
+pairwise reduction in the fused kernels. Haplotype-based selection
+scans (iHS, nSL, ehh\_decay, Garud's $H$) realize smaller but still
+substantial speedups ($1.5$--$54\times$); these statistics already
+enjoy efficient C extensions inside scikit-allel and the GPU advantage
+is bounded by the inherently per-haplotype work. Absolute wall-clock
+comparisons and the per-statistic table are reported in
 Supplementary Figure~\ref{fig:walltimes}.
 
 \begin{figure}[ht]
