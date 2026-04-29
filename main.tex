@@ -156,7 +156,102 @@ open source and freely available at
 
 \section*{Design and Implementation}
 
-TODO: Describe the design and implementation of \pggpu.
+\pggpu is implemented in Python on top of the CuPy NVIDIA GPU
+array library \citep{cupy2017}, with around 50 custom CUDA kernels
+written as \texttt{cupy.RawKernel} extensions and dense linear-algebra
+operations dispatched to cuBLAS via CuPy. The package depends only on
+CuPy, NumPy, SciPy, scikit-allel, msprime, and zarr, and is
+distributed via a \texttt{pixi} environment that pins a CUDA 12 build
+of CuPy together with all Python dependencies, so a complete
+analysis stack can be installed with a single command.
+
+\subsection*{Core data abstractions}
+
+Two thin wrapper classes carry data through every analysis path. The
+\texttt{HaplotypeMatrix} stores phased haplotypes as an
+$n_{\mathrm{hap}}\times n_{\mathrm{var}}$ int8 array (with $-1$
+denoting missing genotypes), variant positions, and optional named
+sample sets. The companion \texttt{GenotypeMatrix} stores unphased
+diploid genotypes in a $n_{\mathrm{var}}\times n_{\mathrm{samp}}$
+uint8 layout for kernels whose arithmetic naturally factorizes over
+the genotype tabulation $(n_{AA}, n_{Aa}, n_{aa})$. Both classes
+retain a single canonical buffer per object and route between CPU
+(NumPy) and GPU (CuPy) backings transparently via a \texttt{device}
+property, so the same user-facing call works whether the caller has
+a tree-sequence (\texttt{HaplotypeMatrix.from\_ts}), a Zarr store
+(\texttt{from\_zarr}, supporting both bio2zarr/VCZ and scikit-allel
+layouts), or an in-memory NumPy array.
+
+\subsection*{Fused kernels}
+
+Most population-genetics statistics decompose into per-site or
+per-pair reductions whose CPU implementations are bandwidth-bound:
+each pass over the haplotype matrix reads tens of gigabytes of memory
+to emit a handful of summary scalars. \pggpu exploits this by writing
+\emph{fused} kernels that read each input element once and emit all
+relevant statistics from registers. For example,
+\texttt{windowed\_statistics\_fused} computes $\pi$, $\theta_W$,
+Tajima's $D$, $\theta_H$, Fay--Wu's $H$, and segregating-site counts
+in a single pass with one kernel launch per chromosome arm; the
+two-population variant of the same kernel additionally produces
+Hudson's $F_{ST}$, Weir--Cockerham $F_{ST}$, $d_{XY}$, and $d_a$.
+Two-locus statistics ($D^2$, $Dz$, $\pi_2$, $r^2$, $D'$, Pearson
+$r$) share a count-based kernel family that takes the four
+haplotype-pair counts $(n_{AB}, n_{Ab}, n_{aB}, n_{ab})$ and the
+sample-size vector and emits any subset of the scalar formulas in
+double precision in a single thread per output.
+
+\subsection*{Memory-aware chunking}
+
+A naive single-launch fused kernel materialises a transposed copy of
+the matrix in a working dtype (typically int8 or float32), which can
+exceed GPU memory at biobank scales. \pggpu computes a chunk size at
+runtime from the free-memory query \texttt{cp.cuda.Device().mem\_info}
+and dispatches to a chunked variant when the projected working set
+exceeds 70\,\% of free memory. The chunked path tiles the variant
+axis, calls the same kernels per chunk, and accumulates partial sums
+to the final result---numerics are bit-identical to the single-shot
+path. This was sufficient to keep the full 10.9-million-variant
+Ag1000G arm in a single A100 GPU.
+
+\subsection*{Missing data, accessibility, and span normalization}
+
+Per-site valid-sample counts are threaded through every diversity,
+divergence, and SFS estimator, so missingness rates that vary along
+the genome do not bias the result. An \texttt{AccessibleMask}
+boolean array attached to the matrix gives a lazy filtered view of
+the haplotypes at accessible positions only, and the inferred total
+callable-bases count is propagated automatically as the denominator
+for per-base normalization. The mask is non-destructive: changing
+or removing it never invalidates the original buffer.
+
+\subsection*{Generalized $\theta$ framework}
+
+Single-population diversity estimators and neutrality tests are
+implemented as instances of the general weighted-SFS estimator
+$\hat\theta = \sum_{\xi} w_\xi \xi p_\xi$
+\citep{achaz2009}. \pggpu computes the SFS once per population
+and obtains $\pi$, $\theta_W$, $\theta_H$, $\theta_L$, the maximum
+DAF estimator and so on by re-weighting; the variance of any
+linear combination of these estimators is computed from the
+Achaz (2009) Eq.~9 $\alpha_n, \beta_n$ coefficients with cached
+weight pairs, so Tajima's $D$, Fay \& Wu's $H^*$, and Zeng's $E$
+share the same null distribution under arbitrary missing-data
+patterns.
+
+\subsection*{Interfacing with downstream tools}
+
+\pggpu provides a drop-in replacement for the LD-parsing module of
+\texttt{moments} \citep{jouganous2017}: the
+\texttt{compute\_ld\_statistics} function consumes the same VCF /
+recombination-map / population-file inputs and returns a dictionary
+in moments' canonical \texttt{(bins, sums, stats, pops)} schema, so
+existing \texttt{moments.LD.Parsing.bootstrap\_data},
+\texttt{optimize\_log\_lbfgsb}, and Godambe pipelines accept the
+output unchanged. Local-PCA / lostruct \citep{li2019} is implemented
+as a single batched-Gram eigendecomposition over windowed views of
+the matrix, followed by MDS on inter-window distances; corner
+identification uses a Welzl minimum-enclosing-circle algorithm.
 
 \section*{Features}
 
