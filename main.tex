@@ -150,7 +150,8 @@ standard diversity and neutrality test statistics from a single site frequency
 spectrum computation. \pggpu provides a drop-in replacement for the LD parsing
 module of \texttt{moments}, achieving up to 275-fold speedups while maintaining
 numerical accuracy at machine precision. Across windowed genome scans, \pggpu
-delivers up to 60-fold speedups relative to \texttt{scikit-allel}. \pggpu is
+delivers a median $139$-fold and up to $1{,}096$-fold speedup relative to
+\texttt{scikit-allel}. \pggpu is
 open source and freely available at
 \url{https://github.com/kr-colab/pg_gpu}.
 
@@ -396,31 +397,36 @@ Admixture & Patterson's $F_2$ (mean) & $2.278 \times 10^{-4}$ & $2.278 \times 10
 
 To quantify the speedup attainable on real data we benchmarked \pggpu
 against scikit-allel on the entire Ag1000G Phase 3 chromosome 3R arm
-(2{,}940 haplotypes, 10.9 million variants). For the 22 statistics with
+(2{,}940 haplotypes, 10.9 million variants). For the 23 statistics with
 a directly comparable scikit-allel implementation the median speedup is
-$90\times$ and the maximum is $745\times$ for Weir--Cockerham $F_{ST}$
-(Figure~\ref{fig:speedups}). The largest gains are seen for
-heterozygosity and divergence statistics ($675\times$ for observed
-heterozygosity, $745\times$ for Weir--Cockerham $F_{ST}$, $274\times$
-for the inbreeding coefficient, $147\times$ for the unfolded allele
-frequency spectrum), reflecting the tight coupling between
-allele-count tabulation and pairwise reduction in the fused kernels.
-Haplotype-based selection scans (iHS, nSL, XP-EHH, Garud's $H$)
-realize smaller but still substantial speedups ($1.3$--$49\times$);
-these statistics already enjoy efficient C extensions inside
-scikit-allel and the GPU advantage is bounded by the inherently
-per-haplotype work. Absolute wall-clock comparisons and the
-per-statistic table are reported in Supplementary
-Figure~\ref{fig:walltimes}.
+$139\times$ and the maximum is $1{,}096\times$ for Weir--Cockerham
+$F_{ST}$ (Figure~\ref{fig:speedups}). The largest gains span
+divergence, diversity, and pairwise linkage-disequilibrium kernels:
+$1{,}096\times$ for Weir--Cockerham $F_{ST}$, $806\times$ for observed
+heterozygosity, $617\times$ for all-pairwise Rogers--Huff $r$ on a
+$10{,}000$-SNP block (the full chromosome-scale all-pairs computation
+is intractable for scikit-allel), $376\times$ for the inbreeding
+coefficient, $316\times$ for $\pi$, and $215\times$ for Tajima's $D$.
+These reflect the tight coupling between allele-count tabulation and
+pairwise reduction in the fused kernels. Haplotype-based selection
+scans (EHH decay, Garud's $H$, XP-EHH, iHS, nSL) realize smaller but
+still substantial speedups ($8.7$--$56\times$); these statistics
+already enjoy efficient C extensions inside scikit-allel and the GPU
+advantage is bounded by the inherently per-haplotype work. Absolute
+wall-clock comparisons and the per-statistic table are reported in
+Supplementary Figure~\ref{fig:walltimes}.
 
 \begin{figure}[ht]
 \centering
 \includegraphics[width=0.85\textwidth]{benchmark_speedups.pdf}
 \caption{\pggpu speedup over scikit-allel on Ag1000G Phase 3 chromosome
-3R (2{,}940 haplotypes, 10.9M variants). Bars show wall-clock speedup
-on a single NVIDIA A100 GPU; orange bars indicate statistics where
-scikit-allel's existing optimized implementation limits the achievable
-gain (typically $<10\times$).}
+3R (2{,}940 haplotypes, 10.9M variants). The all-pairwise Rogers--Huff
+LD comparison is run on the first $10{,}000$ SNPs (200 haplotypes) to
+keep the scikit-allel reference tractable; all other statistics are
+on the full chromosome arm. Bars show wall-clock speedup on a single
+NVIDIA A100 GPU; orange bars indicate statistics where scikit-allel's
+existing optimized implementation limits the achievable gain
+(typically $<10\times$).}
 \label{fig:speedups}
 \end{figure}
 
@@ -582,7 +588,7 @@ TODO: Acknowledgments go here.
 \centering
 \includegraphics[width=0.85\textwidth]{benchmark_walltimes.pdf}
 \caption{Absolute wall-clock time on Ag1000G chromosome 3R for the
-22 statistics with both \pggpu and scikit-allel implementations.
+23 statistics with both \pggpu and scikit-allel implementations.
 Companion to Figure~\ref{fig:speedups}.}
 \label{fig:walltimes}
 \end{figure}
