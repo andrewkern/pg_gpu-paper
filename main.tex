@@ -525,6 +525,23 @@ distance matrix. Applied to a coalescent simulation of a hard sweep,
 the lostruct embedding cleanly separates neutral, linked, and sweep
 windows and the leading MDS axis tracks the localized excess of
 Garud's $H_{12}$ at the sweep focal site (Figure~\ref{fig:lostruct}).
+The streaming-dense local-PCA engine extends the same analysis to
+real-data scale on a single GPU: applied to the West African subset
+of Ag1000G Phase 3 chromosome 3R (200 phased haplotypes, 10.9 million
+variants, $\sim$10{,}900 non-overlapping $1{,}000$-SNP windows), the
+full Li \& Ralph pipeline---per-window local PCA, Frobenius distance
+between window covariances, classical MDS, and corner detection---runs
+end-to-end alongside the 32\,GB haplotype buffer on an 80\,GB A100,
+because the streaming engine bounds peak GPU memory at the per-window
+working set rather than holding the full $\sim10{,}900$ Gram-stack in
+memory. Three distinct corner clusters are recovered, each a
+contiguous block of windows in physical coordinates, and the
+corner-3 region near $\sim$31.5\,Mb co-localizes with a localized peak
+in the companion Garud's $H_{12}$ track on the same windows
+(Figure~\ref{fig:lostruct_ag1000g}). This makes whole-genome
+lostruct screens for outlier population-structure regions tractable
+without restricting to subsampled SNP panels.
+
 Second, \pggpu provides a drop-in replacement for the
 \texttt{moments.LD} parsing module: a three-population isolation
 model fit using \pggpu-parsed LD statistics inside the standard
@@ -541,6 +558,21 @@ hard sweep at 5\,Mb. Left: MDS embedding of windowed PCA distances,
 coloured by k-means regime (neutral, linked, sweep). Right: MDS axis
 1 (top) and Garud's $H_{12}$ (bottom) along the chromosome.}
 \label{fig:lostruct}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.95\textwidth]{ag1000g_lostruct.pdf}
+\caption{Local PCA / lostruct on the West African subset of Ag1000G
+Phase 3 chromosome 3R (200 phased haplotypes, 10.9M variants,
+$\sim$10{,}900 non-overlapping $1{,}000$-SNP windows). Left: MDS
+embedding of windowed PCA distances; windows in each of three
+detected corner clusters are circled. Right: lostruct MDS axis 1
+along the chromosome (top) and companion Garud's $H_{12}$ track on
+the same windows (bottom). The streaming-dense local-PCA engine
+makes this whole-arm analysis tractable on a single A100 by bounding
+peak GPU memory at the per-window working set.}
+\label{fig:lostruct_ag1000g}
 \end{figure}
 
 \begin{figure}[ht]
