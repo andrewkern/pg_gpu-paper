@@ -108,7 +108,45 @@
 \maketitle
 
 \begin{abstract}
-TODO: Abstract goes here.
+\noindent\textbf{Motivation:} Population-genetics summary
+statistics---diversity, divergence, linkage disequilibrium, selection
+scans, and dimensionality reduction---are foundational across human,
+agricultural, and ecological genomics. As whole-genome sequencing
+datasets have grown to hundreds of thousands of individuals, the
+cost of these statistics on conventional CPU implementations has
+become a major bottleneck: windowed scans of a single chromosome arm
+can take hours to days, and the pairwise linkage-disequilibrium
+computations needed for demographic inference scale as $O(n^2)$ in
+sample size, often exceeding wall-clock budgets entirely.
+
+\noindent\textbf{Results:} We present \pggpu, a Python library
+implementing a comprehensive catalog of population-genetics summary
+statistics as fused CUDA kernels on NVIDIA GPUs. \pggpu covers eleven
+categories spanning diversity and neutrality tests, divergence and
+admixture, the site-frequency spectrum, linkage disequilibrium,
+haplotype-based selection scans, dimensionality reduction (PCA,
+randomised PCA, local PCA / \lostruct), distance distributions,
+relatedness, resampling, and a generalised weighted-SFS framework for
+custom $\theta$ estimators. On the full Ag1000G Phase 3 chromosome 3R
+arm (2{,}940 haplotypes, 10.9 million variants) \pggpu agrees with
+\scikitallel and \plinktwo to machine precision while delivering a
+median $139\times$ and maximum $1{,}096\times$ speedup; for
+multi-population LD parsing in \moments-based demographic inference,
+\pggpu is a drop-in replacement that yields a $\sim$1{,}750-fold
+speedup. Whole-arm scans, \lostruct screens, and end-to-end
+demographic inference complete on a single NVIDIA A100 in seconds to
+a few minutes.
+
+\noindent\textbf{Availability and Implementation:} \pggpu is open
+source, implemented in Python ($\geq$3.12) on top of \cupy, and
+distributed via a \pixi environment. Source, documentation, and
+tutorials are at \url{https://github.com/kr-colab/pg_gpu}.
+
+\noindent\textbf{Contact:} \href{mailto:adkern@uoregon.edu}{adkern@uoregon.edu}
+
+\noindent\textbf{Supplementary Information:} Supplementary figures,
+the full statistic catalog with primary references, and per-population
+moments LD-parsing breakdown are available at the journal website.
 \end{abstract}
 
 \section*{Introduction}
@@ -711,7 +749,62 @@ Figure~\ref{fig:moments_ld}.}
 
 \section*{Discussion}
 
-TODO: Discussion goes here.
+\pggpu fills a long-standing gap in the population-genetics software
+ecosystem. Existing tools optimise specific axes---\vcftools and
+\plink for command-line access to focused sets of statistics,
+\scikitallel for a Python-native research workflow, \pixy for
+unbiased estimation under missingness, \angsd for genotype-likelihood
+data, \tskit for tree-sequence inputs, and \moments for demographic
+inference---but none brings the full catalog of routine summary
+statistics onto modern GPU hardware where biobank-scale analysis is
+otherwise prohibitively slow. By unifying eleven categories of
+statistics under a single Python API on top of \cupy, \pggpu turns
+analyses that were previously hours-long batch jobs (full-arm
+\scikitallel pipelines) or computationally infeasible
+(chromosome-scale all-pairs LD on biobank samples) into single-GPU
+runs of seconds to minutes.
+
+Three design choices that emerged from this work may be useful to
+other authors of GPU-accelerated scientific software. First, fused
+kernels that emit any subset of a related family of statistics from
+registers in a single launch substantially outperform sequential
+per-statistic GPU calls, because the dominant cost on this class of
+workload is reading the haplotype matrix off-chip rather than the
+arithmetic itself. Second, runtime memory-aware chunking that
+auto-detects free GPU memory and routes large workloads through a
+chunked variant of the same kernels (with bit-identical numerics) is
+essential to handle real biobank-scale data without per-call user
+tuning. Third, a streaming dispatcher that bounds per-tile working
+memory at $O(\text{tile\_size}\times n_{\text{hap}}^2)$ rather than
+$O(n_{\text{windows}}\times n_{\text{hap}}^2)$ lets the same code
+path scale from a single chromosome to a whole genome.
+
+Several limitations are worth stating. \pggpu requires an NVIDIA GPU
+because \cupy targets CUDA; ports to AMD ROCm or Apple Metal would
+require non-trivial kernel rewrites. Haplotype-pattern statistics
+that scale as $O(n_{\text{hap}}^2)$ in sample size remain bound by
+GPU memory at biobank scale (we tested up to 100{,}000 haplotypes);
+genuine UK-Biobank-class samples will need additional chunked-pair
+kernels for the haplotype-pair statistics. The randomised-SVD
+streaming engine for local PCA approximates \texttt{sumsq} from an
+oversampled spectrum rather than the full Gram, introducing a
+controlled approximation; the bit-identical dense-eigh streaming
+engine remains available when exact \lostruct outputs are required.
+Finally, \pggpu currently supports phased haplotypes and unphased
+diploid genotypes but does not yet handle low-coverage genotype
+likelihoods natively (cf.\ \angsd); extending the framework to
+genotype likelihoods is straightforward in principle and likely
+future work.
+
+Looking forward, we see \pggpu as a foundation for two further
+directions: integration with simulation-based machine-learning
+frameworks for demographic and selection inference, where rapid
+summary-statistic computation is the bottleneck during training;
+and as a reference implementation of the Achaz \citep{achaz2009}
+weighted-SFS framework, lowering the barrier for population
+geneticists to design and validate custom test statistics. We expect
+both will broaden the set of analyses that fit comfortably within
+standard whole-genome research workflows.
 
 \section*{Availability}
 
