@@ -161,10 +161,12 @@ open source and freely available at
 array library \citep{cupy2017}, with around 50 custom CUDA kernels
 written as \texttt{cupy.RawKernel} extensions and dense linear-algebra
 operations dispatched to cuBLAS via CuPy. The package depends only on
-CuPy, NumPy, SciPy, scikit-allel, msprime, and zarr, and is
-distributed via a \texttt{pixi} environment that pins a CUDA 12 build
-of CuPy together with all Python dependencies, so a complete
-analysis stack can be installed with a single command.
+CuPy \citep{cupy2017}, NumPy \citep{harris2020},
+SciPy \citep{virtanen2020}, scikit-allel \citep{miles2024},
+msprime \citep{baumdicker2022}, and zarr, and is distributed via a
+\texttt{pixi} environment that pins a CUDA 12 build of CuPy together
+with all Python dependencies, so a complete analysis stack can be
+installed with a single command.
 
 \subsection*{Core data abstractions}
 
@@ -354,7 +356,7 @@ Almost every statistic in Table~\ref{tab:features} is also accessible
 through \texttt{windowed\_analysis}, a single entry point for genome
 scans that takes a list of statistic names, a window definition (in
 either base pairs or SNPs), and a list of populations, and returns a
-\texttt{pandas.DataFrame} with one row per window. Internally,
+\texttt{pandas.DataFrame} \citep{mckinney2010} with one row per window. Internally,
 \texttt{windowed\_analysis} dispatches the request to the smallest
 covering set of fused CUDA kernels (Design and Implementation), so a
 typical scan that asks for $\pi$, $\theta_W$, Tajima's $D$,
