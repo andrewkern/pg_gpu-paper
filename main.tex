@@ -392,6 +392,34 @@ adopt \pggpu by changing a single import.
 
 \section*{Results}
 
+\subsection*{Benchmark dataset}
+
+For benchmarking we draw throughout on Phase 3 of the \emph{Anopheles
+gambiae} 1000 Genomes Project (Ag1000G) \citep{ag1000g2017}, a
+deep-coverage whole-genome resequencing panel of 1{,}470 phased
+mosquitoes (2{,}940 haplotypes) sampled from 22 populations across
+sub-Saharan Africa. Chromosome arm 3R alone carries 10.9 million
+phased biallelic SNPs after filtering and accessibility masking; the
+arm spans 53\,Mb of euchromatin, contains multiple known segregating
+inversions and well-characterised insecticide-resistance sweeps, and
+is among the most variable autosomal regions sequenced in any
+eukaryote. This combination---a real biobank-scale variant count, a
+sample size large enough to exercise the $O(n^2)$ haplotype-pair
+kernels, mixed missingness patterns from natural-population
+sequencing, and rich population structure with documented selection
+signals---makes Ag1000G a stringent and biologically meaningful test
+of every claim we make below: numerical agreement with established
+tools, wall-clock performance under realistic data, end-to-end
+workflow viability, and detection of population-genetic signal in
+local-PCA and Garud's $H$ scans. Where a controlled ground truth or
+parametric scaling is needed---numerical accuracy under known
+missing-data rates, runtime versus sample size and variant count,
+and demographic-inference cross-checks against \texttt{moments}---we
+pair Ag1000G with msprime \citep{baumdicker2022} simulations so that
+each result is supported by both empirical and synthetic evidence.
+
+\subsection*{Overview}
+
 We organize the empirical evaluation of \pggpu around four questions:
 do the GPU implementations agree numerically with established CPU
 tools, how fast are they on real data, how do they scale to
