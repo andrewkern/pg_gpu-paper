@@ -70,8 +70,8 @@
 \title{GPU accelerated population genetics statistics using \texttt{pg\_gpu}}
 \author[1, 2]{Nathaniel S. Pope}
 \author[1, 2]{Angel Rivera-Colón}
+\author[1, 2]{Ananya Kapoor}
 \author[1, 2]{Kevin Korfmann}
-\author[1, 2]{TODO Authors}
 \author[1, 2, *]{Andrew D. Kern}
 \affil[1]{\small{University of Oregon, Institute of Ecology and Evolution}}
 \affil[2]{\small{University of Oregon, Department of Biology}}
@@ -260,12 +260,13 @@ existing \texttt{moments.LD.Parsing.bootstrap\_data},
 output unchanged. Local-PCA / lostruct \citep{li2019} is implemented
 as a single batched-Gram eigendecomposition over windowed views of
 the matrix, followed by MDS on inter-window distances; corner
-identification uses a Welzl minimum-enclosing-circle algorithm.
+identification uses Welzl's minimum-enclosing-circle algorithm
+\citep{welzl1991}.
 
 \section*{Features}
 
 \pggpu provides a comprehensive catalog of population genetics statistics
-organized into ten categories (Table~\ref{tab:features}). A complete listing of
+organized into eleven categories (Table~\ref{tab:features}). A complete listing of
 all implemented statistics with citations is provided in the Supplementary
 Material (Table~\ref{tab:full_catalog}).
 
@@ -279,21 +280,111 @@ citations is provided in Supplementary Table~\ref{tab:full_catalog}.}
 \toprule
 \textbf{Category} & \textbf{Count} & \textbf{Representative statistics} \\
 \midrule
-Diversity \& neutrality tests & 20+ & $\pi$, $\theta_W$, $\theta_H$, Tajima's $D$, Fay \& Wu's $H$ \\
-Divergence & 10+ & $F_{ST}$ (Hudson; Weir--Cockerham), $d_{XY}$, $D_a$, PBS \\
-Linkage disequilibrium & 10+ & $r^2$, $D^2$, $D_z$, $\pi_2$, $Z_{nS}$, $\omega$ \\
-Selection scans & 8 & iHS, nSL, XP-EHH, $H_{12}$, $H_{2}/H_{1}$ \\
+Diversity \& neutrality tests & 20+ & $\pi$, $\theta_W$, $\theta_H$, Tajima's $D$, Fay \& Wu's $H$, Zeng's $E$ \\
+Divergence & 13 & $F_{ST}$ (Hudson; Weir--Cockerham; Nei), $d_{XY}$, $D_a$, PBS, $S_{nn}$, $G_{\min}$ \\
+Linkage disequilibrium & 10+ & $r^2$, $D^2$, $D_z$, $\pi_2$, $Z_{nS}$, $\omega$, $\mu_{\mathrm{LD}}$, \texttt{moments.LD} parser \\
+Selection scans & 8 & iHS, nSL, XP-EHH, XP-nSL, Garud's $H_{1/12/123}$, $H_{2}/H_{1}$, EHH decay \\
 Site frequency spectrum & 6+ & Unfolded, folded, scaled, joint (2-pop) SFS \\
-Admixture / $F$-statistics & 6+ & Patterson's $F_2$, $F_3$, $D$ (ABBA-BABA) \\
-Dimensionality reduction & 3 & PCA, randomized PCA, PCoA \\
+Admixture / $F$-statistics & 6+ & Patterson's $F_2$, $F_3$, $D$ (ABBA-BABA), block-jackknife wrappers \\
+Dimensionality reduction & 8 & PCA, randomized PCA, PCoA, local PCA / lostruct, corner detection \\
 Relatedness / kinship & 2 & GRM (GCTA-equivalent), IBS (PLINK-equivalent) \\
 Distance distribution & 4 & Hamming distance, variance, skewness, kurtosis \\
-Achaz framework & -- & Generalized $\theta$ estimators via SFS weight vectors \\
+Resampling & 2 & Block jackknife, block bootstrap (incl.\ ratio-of-sums) \\
+Generalized $\theta$ framework & -- & \texttt{FrequencySpectrum} class: custom weights, paired neutrality tests, SFS projection \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-TODO: Describe the features and statistics available in \pggpu.
+The user-facing API mirrors the table organization: each category
+corresponds to a Python module
+(\texttt{pg\_gpu.diversity}, \texttt{pg\_gpu.divergence},
+\texttt{pg\_gpu.selection}, and so on), and each statistic is a function
+that takes a \texttt{HaplotypeMatrix} or \texttt{GenotypeMatrix} as its
+first argument and returns a NumPy array. Population labels assigned
+once via \texttt{load\_pop\_file} are accepted by every statistic that
+needs them, so \texttt{divergence.fst\_hudson(h, "pop1", "pop2")} and
+\texttt{diversity.tajimas\_d(h, population="pop1")} share the same
+calling convention. Where a statistic is defined for both phased and
+diploid input, the same call dispatches on container type:
+\texttt{selection.garud\_h} computes haplotype-frequency $H$ statistics
+on a \texttt{HaplotypeMatrix} and the diplotype analogue on a
+\texttt{GenotypeMatrix} without separate function names. All per-site
+estimators handle missing genotypes via per-site valid-sample counts
+by default, and an attached \texttt{AccessibleMask} restricts both
+numerators and span-normalisation denominators to callable bases (see
+Design and Implementation), so the same call returns calibrated rates
+on raw and masked data.
+
+The catalog covers the routine workhorses---$\pi$, $\theta_W$,
+Tajima's $D$, Hudson and Weir--Cockerham $F_{ST}$, $d_{XY}$, the
+unfolded and joint SFS, Patterson's $F_2$/$F_3$/$D$, iHS, nSL, and
+Garud's $H$---together with several less commonly supported additions
+that are useful in modern workflows. Schrider et al.~\citep{schrider2018}
+distance-based two-population statistics ($Z_x$, $dd$, $dd$ rank) and
+the RAiSD $\mu_{\mathrm{LD}}$ component~\citep{alachiotis2018} are
+provided as ordinary functions; Patterson's F-statistics return
+per-site numerators and denominators separately so that
+ratio-of-sums standard errors can be computed correctly with
+resampling (below). The pairwise-distance moments of
+\citet{schrider2018} and the diplotype-frequency spectrum used for
+sweep-classifier features are likewise exposed directly.
+
+For users who need $\theta$ estimators or neutrality tests outside the
+named catalog, the \texttt{FrequencySpectrum} class provides a
+direct interface to the Achaz~\citep{achaz2009} weighted-SFS
+formulation. A \texttt{FrequencySpectrum} built from a
+\texttt{HaplotypeMatrix} computes the SFS once on the GPU and then
+exposes three operations: \texttt{theta(weights)} evaluates any
+linear estimator $\hat\theta = \sum_\xi w_\xi \xi p_\xi$ given either
+a name from the built-in dictionary (\texttt{pi}, \texttt{watterson},
+\texttt{theta\_h}, \texttt{theta\_l}, \texttt{eta1}, etc.) or a
+user-supplied callable that returns a weight vector;
+\texttt{neutrality\_test} pairs any two estimators into a normalised
+$D$-style test statistic with a variance computed from the cached
+$\alpha_n,\beta_n$ coefficients of \citet{achaz2009}, so a custom
+neutrality test built around an unusual weighting (for example,
+class-specific singletons) is one call rather than a hand-derived
+variance formula; and \texttt{project} produces a hypergeometrically
+sub-sampled SFS at any target sample size~\citep{gutenkunst2009},
+allowing comparisons across populations with different sample sizes
+and bridging to demographic-inference pipelines that operate on a
+projected SFS.
+
+Almost every statistic in Table~\ref{tab:features} is also accessible
+through \texttt{windowed\_analysis}, a single entry point for genome
+scans that takes a list of statistic names, a window definition (in
+either base pairs or SNPs), and a list of populations, and returns a
+\texttt{pandas.DataFrame} with one row per window. Internally,
+\texttt{windowed\_analysis} dispatches the request to the smallest
+covering set of fused CUDA kernels (Design and Implementation), so a
+typical scan that asks for $\pi$, $\theta_W$, Tajima's $D$,
+$F_{ST}$, $d_{XY}$, Garud's $H_{12}$, and mean nSL---seven statistics
+spanning four kernel families---runs in a small constant number of
+GPU launches over the matrix rather than seven independent passes.
+Local PCA / lostruct~\citep{li2019} is exposed through the same
+interface: requesting \texttt{statistics=["local\_pca"]} returns a
+\texttt{LocalPCAResult} with per-window eigenvalues and eigenvectors,
+which the companion functions \texttt{pc\_dist} and \texttt{corners}
+turn into the inter-window distance matrix and outlier-window
+identifications shown in Figure~\ref{fig:lostruct_ag1000g}.
+
+Two cross-cutting features round out the user-facing surface.
+General-purpose \texttt{block\_jackknife} and \texttt{block\_bootstrap}
+estimators~\citep{busing1999, efron1993} produce calibrated standard
+errors and confidence intervals for any scalar aggregate of windowed
+output. Both accept a tuple of (numerator, denominator) block arrays
+in addition to a single array, so ratio-of-sums quantities such as
+Patterson's $F_3$, $D$, and $F_{ST}$ are resampled with the same block
+assignments on the two sides of the ratio without manual book-keeping
+on the user's part. Finally, \pggpu provides a drop-in replacement for
+the LD-parsing module of \texttt{moments}~\citep{jouganous2017}: the
+\texttt{compute\_ld\_statistics} function consumes the same VCF,
+recombination-map, and population-file inputs and returns a dictionary
+in the canonical \texttt{(bins, sums, stats, pops)} schema that
+existing \texttt{moments.LD} bootstrap, optimisation, and Godambe
+pipelines accept without modification, so a workflow that already
+fits a multi-population demographic model with \texttt{moments} can
+adopt \pggpu by changing a single import.
 
 \section*{Results}
 
@@ -459,7 +550,8 @@ Runtime scaling was characterized along two independent axes
 variant count fixed at 100{,}000 and increased the number of haplotypes
 from 100 to 100{,}000 (synthetic biallelic genotypes). To probe
 variant-count scaling we held sample size fixed at 200 haplotypes and
-generated msprime simulations of increasing sequence length, yielding
+generated \texttt{msprime} simulations \citep{baumdicker2022} of
+increasing sequence length, yielding
 between $\sim 10^3$ and $\sim 10^6$ segregating sites with realistic
 linkage disequilibrium structure. Per-site statistics ($\pi$,
 $\theta_W$, Tajima's $D$, Hudson $F_{ST}$, windowed three-statistic
@@ -521,7 +613,8 @@ two complementary use cases. First, the local-PCA / lostruct
 \citep{li2019} workflow---which identifies genomic windows whose
 structure deviates from the genome-wide PCA---is implemented as a
 single fused windowed-PCA kernel followed by MDS on the inter-window
-distance matrix. Applied to a coalescent simulation of a hard sweep,
+distance matrix. Applied to a coalescent simulation
+\citep{baumdicker2022} of a hard sweep,
 the lostruct embedding cleanly separates neutral, linked, and sweep
 windows and the leading MDS axis tracks the localized excess of
 Garud's $H_{12}$ at the sweep focal site (Figure~\ref{fig:lostruct}).
@@ -708,18 +801,20 @@ drop-in replacement for the \texttt{moments.LD} parsing module.}
 \endlastfoot
 
 % Diversity & neutrality tests
-\multirow{12}{*}{Diversity} & Nucleotide diversity ($\pi$) & \citep{nei1979} \\
+\multirow{14}{*}{Diversity} & Nucleotide diversity ($\pi$) & \citep{nei1979} \\
  & Watterson's $\theta_W$ & \citep{watterson1975} \\
  & Fay \& Wu's $\theta_H$ & \citep{fay2000} \\
  & Zeng's $\theta_L$ & \citep{zeng2006} \\
  & Tajima's $D$ & \citep{tajima1989} \\
  & Fay \& Wu's $H$, normalized $H^*$ & \citep{zeng2006} \\
  & Zeng's $E$ & \citep{zeng2006} \\
- & Segregating sites, singletons & -- \\
- & Haplotype diversity, count & -- \\
- & Expected / observed heterozygosity & -- \\
+ & Zeng's $DH$ joint test & \citep{zeng2006} \\
+ & Segregating sites, singletons & \citep{fu1995} \\
+ & Haplotype diversity, count & \citep{nei1987} \\
+ & Expected / observed heterozygosity & \citep{nei1973} \\
  & Wright's $F$ & \citep{wright1951} \\
  & Max DAF, DAF histogram & -- \\
+ & Diplotype frequency spectrum & -- \\
 \midrule
 
 % Divergence
@@ -736,7 +831,7 @@ drop-in replacement for the \texttt{moments.LD} parsing module.}
 \midrule
 
 % Linkage disequilibrium
-\multirow{8}{*}{LD} & $r$, $r^2$ & -- \\
+\multirow{8}{*}{LD} & $r$, $r^2$ & \citep{hill1968} \\
  & $D^2$, $D_z$, $\pi_2$ & \citep{ragsdale2020} \\
  & $\sigma_d^2$ (unbiased) & \citep{ragsdale2020} \\
  & Kelly's $Z_{nS}$ & \citep{kelly1997} \\
@@ -762,20 +857,35 @@ drop-in replacement for the \texttt{moments.LD} parsing module.}
 \midrule
 
 % Admixture / F-statistics
-\multirow{3}{*}{Admixture} & Patterson's $F_2$ & \citep{patterson2012} \\
+\multirow{5}{*}{Admixture} & Patterson's $F_2$ & \citep{patterson2012} \\
  & Patterson's $F_3$ & \citep{patterson2012} \\
  & Patterson's $D$ (ABBA-BABA) & \citep{patterson2012} \\
+ & Windowed $F_3$, $D$ & \citep{patterson2012} \\
+ & Block-jackknife $F_3$, $D$ standard error & \citep{busing1999} \\
 \midrule
 
 % Dimensionality reduction
-\multirow{3}{*}{Dim.\ reduction} & PCA & \citep{patterson2006} \\
+\multirow{5}{*}{Dim.\ reduction} & PCA & \citep{patterson2006} \\
  & Randomized PCA & \citep{halko2011} \\
  & PCoA (classical MDS) & -- \\
+ & Local PCA / lostruct (windowed eigendecomposition) & \citep{li2019} \\
+ & Corner detection (Welzl minimum enclosing circle) & \citep{li2019} \\
+\midrule
+
+% Resampling
+\multirow{2}{*}{Resampling} & Block jackknife (incl.\ unequal blocks) & \citep{busing1999} \\
+ & Block bootstrap & \citep{efron1993} \\
+\midrule
+
+% Generalized theta framework
+\multirow{3}{*}{Generalized $\theta$} & Weighted-SFS $\theta$ estimator & \citep{achaz2009} \\
+ & Paired neutrality tests with cached variance & \citep{achaz2009} \\
+ & SFS projection (hypergeometric) & \citep{gutenkunst2009} \\
 \midrule
 
 % Relatedness
 \multirow{2}{*}{Relatedness} & GRM & \citep{yang2011} \\
- & IBS & -- \\
+ & IBS & \citep{purcell2007} \\
 \midrule
 
 % Distance distribution
