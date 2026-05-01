@@ -21,6 +21,7 @@
 \usepackage{subcaption}
 \usepackage{nameref}
 \usepackage{amsmath}
+\usepackage{amssymb} % \checkmark in tab:competitors
 \usepackage{xspace}
 
 \graphicspath{ {./figures/} }
@@ -188,6 +189,57 @@ wall-clock times of hours to days are common. This limitation is particularly
 acute for two-locus statistics such as LD, where pairwise computations over
 variant sites are inherently $O(n^2)$ and form a bottleneck in inference
 pipelines such as \moments \citep{jouganous2017}.
+Table~\ref{tab:competitors} summarises the coverage and capabilities
+of the most commonly used CPU tools alongside \pggpu (this work).
+
+\begin{table}[ht]
+\centering
+\footnotesize
+\caption{Coverage of population-genetics summary statistics across
+established CPU tools and \pggpu. \checkmark, full support;
+$\sim$, partial or restricted support; ---, no support or out of
+scope. Statistic categories follow the broad families described in
+the text. \moments \citep{jouganous2017} is omitted because its
+scope is downstream demographic inference rather than genome-scale
+summary-statistic computation; \pggpu provides a drop-in replacement
+for its LD-parsing module (Figure~\ref{fig:moments_ld}).}
+\label{tab:competitors}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lcccccccc@{}}
+\toprule
+\textbf{Tool}
+ & \textbf{Backend}
+ & \textbf{Diversity}
+ & \textbf{Divergence}
+ & \textbf{LD}
+ & \textbf{Selection}
+ & \textbf{PCA}
+ & \textbf{Local PCA}
+ & \textbf{GPU} \\
+ & & \textbf{\& SFS} & \textbf{\& $F$-stats} & & \textbf{scans} & & \textbf{/ \lostruct} & \\
+\midrule
+\vcftools \citep{danecek2011}
+ & C++         & $\sim$     & $\sim$     & $\sim$     & ---        & ---        & ---        & ---        \\
+\popgenome\textsuperscript{a} \citep{pfeifer2014}
+ & R           & \checkmark & \checkmark & $\sim$     & $\sim$     & ---        & ---        & ---        \\
+\plinktwo \citep{chang2015}
+ & C++         & $\sim$     & $\sim$     & $\sim$     & ---        & \checkmark & ---        & ---        \\
+\angsd \citep{korneliussen2014}
+ & C++         & \checkmark & \checkmark & ---        & $\sim$     & $\sim$     & ---        & ---        \\
+\scikitallel\textsuperscript{b} \citep{miles2024}
+ & Python      & \checkmark & \checkmark & $\sim$     & \checkmark & \checkmark & ---        & ---        \\
+\pixy \citep{korunes2021}
+ & Python      & $\sim$     & $\sim$     & ---        & ---        & ---        & ---        & ---        \\
+\tskit \citep{jeffery2026}
+ & Python / C  & \checkmark & \checkmark & $\sim$     & ---        & \checkmark & ---        & ---        \\
+\pggpu (this work)
+ & Python / CUDA & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+\bottomrule
+\end{tabular}
+\par\smallskip
+{\scriptsize\textsuperscript{a}Removed from CRAN; no longer
+maintained. \textsuperscript{b}Active maintenance has ceased.}
+\end{table}
 
 Modern graphics processing units (GPUs) offer massive parallelism that is
 well-suited to the data-parallel structure of population genetics computation.
