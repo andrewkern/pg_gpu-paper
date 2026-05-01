@@ -181,9 +181,11 @@ the genotype tabulation $(n_{AA}, n_{Aa}, n_{aa})$. Both classes
 retain a single canonical buffer per object and route between CPU
 (NumPy) and GPU (CuPy) backings transparently via a \texttt{device}
 property, so the same user-facing call works whether the caller has
-a tree-sequence (\texttt{HaplotypeMatrix.from\_ts}), a Zarr store
-(\texttt{from\_zarr}, supporting both bio2zarr/VCZ and scikit-allel
-layouts), or an in-memory NumPy array.
+a tree-sequence \citep{jeffery2026}
+(\texttt{HaplotypeMatrix.from\_ts}), a Zarr store (\texttt{from\_zarr},
+supporting both bio2zarr/VCZ \citep{czech2024vcz} and scikit-allel
+\citep{miles2024} layouts), or an in-memory NumPy array
+\citep{harris2020}.
 
 \subsection*{Fused kernels}
 
