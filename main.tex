@@ -175,8 +175,9 @@ data bias in estimates of $\pi$, $d_{XY}$, and $F_{ST}$, but is limited to
 those three statistics. At the other end of the spectrum, \plink
 \citep{purcell2007, chang2015} and \angsd \citep{korneliussen2014} are
 high-performance C/C++ tools but are oriented toward GWAS and genotype
-likelihood workflows, respectively, rather than the summary statistics used in
-evolutionary population genetics. \popgenome \citep{pfeifer2014} offered a
+likelihood workflows, respectively, rather than offering a 
+wide array of summary statistics used in evolutionary population genetics. 
+\popgenome \citep{pfeifer2014} offered a
 comprehensive R-based toolkit but has been removed from CRAN and is no longer
 maintained. For tree sequence data, \tskit \citep{jeffery2026} provides
 exceptionally efficient computation of a general class of statistics, but
@@ -337,11 +338,11 @@ scalar formulas in double precision in a single thread per output.
 A naive single-launch fused kernel materialises a transposed copy of
 the matrix in a working dtype (typically int8 or float32), which can
 exceed GPU memory at biobank scales. \pggpu computes a chunk size at
-runtime from the free-memory query \texttt{cp.cuda.Device().mem\_info}
+runtime from the free-memory query %\texttt{cp.cuda.Device().mem\_info}
 and dispatches to a chunked variant when the projected working set
 exceeds 70\,\% of free memory. The chunked path tiles the variant
 axis, calls the same kernels per chunk, and accumulates partial sums
-to the final result---numerics are bit-identical to the single-shot
+to the final result---numerics are bit-identical to the single-pass
 path. This was sufficient to keep the full 10.9-million-variant
 Ag1000G arm in a single A100 GPU.
 
@@ -353,8 +354,7 @@ the genome do not bias the result. An \texttt{AccessibleMask}
 boolean array attached to the matrix gives a lazy filtered view of
 the haplotypes at accessible positions only, and the inferred total
 callable-bases count is propagated automatically as the denominator
-for per-base normalization. The mask is non-destructive: changing
-or removing it never invalidates the original buffer.
+for per-base normalization. 
 
 \subsection*{Generalized $\theta$ framework}
 
@@ -365,7 +365,7 @@ $\hat\theta = \sum_{\xi} w_\xi \xi p_\xi$
 and obtains $\pi$, $\theta_W$, $\theta_H$, $\theta_L$, the maximum
 DAF estimator and so on by re-weighting; the variance of any
 linear combination of these estimators is computed from the
-Achaz (2009) Eq.~9 $\alpha_n, \beta_n$ coefficients with cached
+\citet{achaz2009} Eq.~9 $\alpha_n, \beta_n$ coefficients with cached
 weight pairs, so Tajima's $D$, Fay \& Wu's $H^*$, and Zeng's $E$
 share the same null distribution under arbitrary missing-data
 patterns.
@@ -465,7 +465,7 @@ user-supplied callable that returns a weight vector;
 $D$-style test statistic with a variance computed from the cached
 $\alpha_n,\beta_n$ coefficients of \citet{achaz2009}, so a custom
 neutrality test built around an unusual weighting (for example,
-class-specific singletons) is one call rather than a hand-derived
+higher order powers of the frequency spectrum) is one call rather than a hand-derived
 variance formula; and \texttt{project} produces a hypergeometrically
 sub-sampled SFS at any target sample size~\citep{gutenkunst2009},
 allowing comparisons across populations with different sample sizes
@@ -490,23 +490,14 @@ which the companion functions \texttt{pc\_dist} and \texttt{corners}
 turn into the inter-window distance matrix and outlier-window
 identifications shown in Figure~\ref{fig:lostruct_ag1000g}.
 
-Two cross-cutting features round out the user-facing surface.
 General-purpose \texttt{block\_jackknife} and \texttt{block\_bootstrap}
-estimators~\citep{busing1999, efron1993} produce calibrated standard
-errors and confidence intervals for any scalar aggregate of windowed
-output. Both accept a tuple of (numerator, denominator) block arrays
-in addition to a single array, so ratio-of-sums quantities such as
-Patterson's $F_3$, $D$, and $F_{ST}$ are resampled with the same block
-assignments on the two sides of the ratio without manual book-keeping
-on the user's part. Finally, \pggpu provides a drop-in replacement for
-the LD-parsing module of \moments~\citep{jouganous2017}: the
-\texttt{compute\_ld\_statistics} function consumes the same VCF,
-recombination-map, and population-file inputs and returns a dictionary
-in the canonical \texttt{(bins, sums, stats, pops)} schema that
-existing \texttt{moments.LD} bootstrap, optimisation, and Godambe
-pipelines accept without modification, so a workflow that already
-fits a multi-population demographic model with \moments can
-adopt \pggpu by changing a single import.
+estimators~\citep{busing1999, efron1993} round out the user-facing
+surface, producing calibrated standard errors and confidence intervals
+for any scalar aggregate of windowed output. Both accept a tuple of
+(numerator, denominator) block arrays in addition to a single array,
+so ratio-of-sums quantities such as Patterson's $F_3$, $D$, and
+$F_{ST}$ are resampled with the same block assignments on the two
+sides of the ratio without manual bookkeeping on the user's part.
 
 \section*{Results}
 
@@ -869,6 +860,16 @@ standard whole-genome research workflows.
 \section*{Acknowledgments}
 
 TODO: Acknowledgments go here.
+
+\section*{Generative AI use}
+
+Anthropic's Claude (Opus 4.6) was used to assist in drafting and
+optimizing the fused \texttt{cupy.RawKernel} CUDA implementations
+underlying \pggpu. All model-generated kernel code was reviewed,
+profiled, and validated by the authors against appropriate
+reference implementations (Table~\ref{tab:accuracy}) before 
+inclusion in the final codebase. 
+
 
 \printbibliography
 
