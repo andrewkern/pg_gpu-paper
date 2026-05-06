@@ -503,12 +503,12 @@ sides of the ratio without manual bookkeeping on the user's part.
 
 \subsection*{Benchmark dataset}
 
-For benchmarking we draw throughout on Phase 3 of the \emph{Anopheles
+For benchmarking, we use Phase 3 of the \emph{Anopheles
 gambiae} 1000 Genomes Project (Ag1000G) \citep{ag1000g2017}, a
 deep-coverage whole-genome resequencing panel of 1{,}470 phased
 mosquitoes (2{,}940 haplotypes) sampled from 22 populations across
 sub-Saharan Africa. Chromosome arm 3R alone carries 10.9 million
-phased biallelic SNPs after filtering and accessibility masking; the
+phased, biallelic SNPs after filtering and accessibility masking; the
 53\,Mb arm contains multiple known segregating inversions and
 well-characterised insecticide-resistance sweeps, and is among the
 most variable autosomal regions sequenced in any eukaryote. The
@@ -519,22 +519,20 @@ biologically meaningful test bed. Where parametric ground truth is
 needed---missing-data bias, runtime scaling, and
 demographic-inference cross-checks against \moments---we pair
 Ag1000G with \msprime \citep{baumdicker2022} simulations so each
-result is supported by both empirical and synthetic evidence.
+result is supported by both empirical and simulation evidence.
 
 \subsection*{Numerical accuracy}
 
 We validated \pggpu against \scikitallel using a 4\,Mb region of Ag1000G
 chromosome 3L (3L:1{,}000{,}000--5{,}000{,}000; 2{,}940 haplotypes after
 removing missing-data sites). For every statistic with a \scikitallel
-equivalent we observe agreement to either machine precision or
-floating-point roundoff bounded by the order of harmonic-sum reductions
-in the underlying formula (Table~\ref{tab:accuracy}). Statistics whose
-estimators reduce to exact integer counts---site-frequency spectra,
+equivalent we observe agreement to either machine precision (Table~\ref{tab:accuracy}). 
+Statistics whose estimators reduce to exact integer counts---site-frequency spectra,
 two-locus haplotype-frequency tallies (Garud's $H$), and Patterson's
-$F_2$---agree exactly. Statistics that involve inverse harmonics or
+$F_2$---agree exactly. Statistics that involve harmonic sums or
 unbiased corrections ($\theta_W$, Tajima's $D$) differ by at most
 $\sim 5\times 10^{-4}$, consistent with reordering of double-precision
-sums under different reduction trees. A directly comparable Hudson
+sums under different reductions. A directly comparable Hudson
 $F_{ST}$ computation against \plinktwo on simulated \msprime data agrees to
 $1.7\times 10^{-8}$.
 
@@ -591,8 +589,8 @@ the most ($600$--$1{,}100\times$), single-population diversity and
 SFS statistics gain $130$--$380\times$, and haplotype-based selection
 scans (EHH decay, Garud's $H$, XP-EHH, iHS, nSL) gain
 $9$--$56\times$---bounded by the per-haplotype work that
-\scikitallel's C extensions already vectorise efficiently.
-Figure~\ref{fig:overview} renders the equivalence and the speedup
+\scikitallel's C extensions already vectorize efficiently.
+Figure~\ref{fig:overview} shows the equivalence and the speedup
 together on a 50\,kb-windowed slice of the same data: $\pi$, an
 $R_0$-style heterozygosity ratio, Tajima's $D$, and the LD-decay
 curve overlay to within line width across windowing engines while
@@ -652,11 +650,11 @@ $\pi_2$, $H$) for a four-population split simulation (10 replicates;
 \label{fig:moments_ld}
 \end{figure}
 
-Runtime scaling was characterised along two independent axes
+Runtime scaling was characterized along two independent axes
 (Figure~\ref{fig:scaling}). For sample-size scaling we held the
 variant count fixed at 100{,}000 and varied haplotypes from 100 to
-100{,}000 (synthetic biallelic genotypes); for variant-count scaling
-we held sample size at 200 haplotypes and varied \msprime
+100{,}000 (simulated genotypes); for variant-count scaling
+we held sample size at 200 haplotypes and varied \msprime simulated
 \citep{baumdicker2022} sequence length to span $\sim 10^3$ to
 $\sim 10^6$ segregating sites with realistic LD structure. Per-site
 statistics scale linearly on both axes and complete in well under a
@@ -682,7 +680,7 @@ that computes $\pi$, $\theta_W$, and Tajima's $D$ in a single pass.}
 
 We illustrate three end-to-end uses of \pggpu, each on data and
 methodology where the GPU implementation enables an analysis that
-is awkward or intractable on CPU.
+is slow or intractable on CPU.
 
 \paragraph{Whole-arm Ag1000G genome scan.}
 Partitioning the 1{,}470 Ag1000G samples into West and East African
@@ -694,10 +692,10 @@ windows plus per-population and joint SFS---takes 168 seconds total
 wall time, of which only 30 seconds is GPU compute
 (Figure~\ref{fig:scan}). The same workflow expressed in
 \scikitallel runs in roughly 75 minutes (windowed statistics alone),
-so a single A100 reduces the population-genetic scan from a coffee
-break to seconds while recovering the expected genome-wide
+so a single A100 reduces the population-genetic scan from over an hour
+to seconds while recovering the expected genome-wide
 signatures: $\pi$ heterogeneity, negative Tajima's $D$ consistent
-with expansion, and elevated Hudson $F_{ST}$ between subspecies.
+with non-equilibrium demography and selection, and elevated Hudson $F_{ST}$ between subspecies.
 
 \begin{figure}[ht]
 \centering
@@ -718,22 +716,22 @@ time including I/O is 168\,s.}
 The local-PCA / \lostruct \citep{li2019} workflow---per-window
 local PCA, Frobenius distance between window covariances, classical
 MDS, and corner detection---identifies genomic intervals whose
-sample structure deviates from the genome-wide pattern. As a sanity
+structure deviates from the genome-wide pattern. As a sanity
 check on a controlled signal we apply it to a coalescent simulation
 \citep{baumdicker2022} containing a single hard sweep
 (Figure~\ref{fig:lostruct}): the embedding cleanly separates
 neutral, linked, and sweep windows and the leading MDS axis tracks
-the localised excess of Garud's $H_{12}$ at the sweep focal site.
+the localized peak of Garud's $H_{12}$ at the sweep focal site.
 On real data, the streaming-dense local-PCA engine extends the
 same pipeline to whole-arm scale: applied to the West African
 subset of Ag1000G 3R (200 haplotypes, 10.9M variants,
 $\sim$10{,}900 non-overlapping $1{,}000$-SNP windows;
 Figure~\ref{fig:lostruct_ag1000g}) it runs end-to-end alongside
 the 32\,GB haplotype buffer on an 80\,GB A100, because the
-streaming engine bounds peak GPU memory at the per-window working
-set rather than holding the full $\sim10{,}900$ Gram-stack at
+streaming approach keeps only one window's matrix in memory at a
+time instead of storing all $\sim10{,}900$ window matrices at
 once. Three distinct corner clusters are recovered, and the
-corner-1 region near $\sim$28\,Mb co-localises with a localised
+corner-1 region near $\sim$28\,Mb overlaps with a localized
 peak in the companion Garud's $H_{12}$ track (the
 \textit{Cyp6}/\textit{Gste} insecticide-resistance locus on 3R), a
 known sweep target in West African \emph{An.\ gambiae}.
@@ -765,7 +763,7 @@ per-window working set.}
 
 \paragraph{Demographic inference via the \texttt{moments.LD} drop-in.}
 A three-population isolation-with-migration model fit using
-\pggpu-parsed LD statistics inside the standard \moments optimiser
+\pggpu-parsed LD statistics inside the standard \moments optimizer
 recovers parameter estimates indistinguishable from those obtained
 with the canonical \texttt{moments.LD} parser
 (Figure~\ref{fig:moments_inference}), at the speedups already shown
@@ -797,12 +795,11 @@ Figure~\ref{fig:moments_ld}.}
 \section*{Discussion}
 
 \pggpu fills a long-standing gap in the population-genetics software
-ecosystem. Existing tools optimise specific axes---\vcftools and
+ecosystem. Existing tools optimize specific axes---\vcftools and
 \plink for command-line access to focused sets of statistics,
 \scikitallel for a Python-native research workflow, \pixy for
-unbiased estimation under missingness, \angsd for genotype-likelihood
-data, \tskit for tree-sequence inputs, and \moments for demographic
-inference---but none brings the full catalog of routine summary
+unbiased estimation under missingness, and \tskit for tree-sequence inputs,
+but none brings the full catalog of routine summary
 statistics onto modern GPU hardware where biobank-scale analysis is
 otherwise prohibitively slow. By unifying eleven categories of
 statistics under a single Python API on top of \cupy, \pggpu turns
@@ -816,7 +813,7 @@ other authors of GPU-accelerated scientific software. First, fused
 kernels that emit any subset of a related family of statistics from
 registers in a single launch substantially outperform sequential
 per-statistic GPU calls, because the dominant cost on this class of
-workload is reading the haplotype matrix off-chip rather than the
+workload is reading the haplotype matrix off-RAM rather than the
 arithmetic itself. Second, runtime memory-aware chunking that
 auto-detects free GPU memory and routes large workloads through a
 chunked variant of the same kernels (with bit-identical numerics) is
@@ -840,8 +837,8 @@ engine remains available when exact \lostruct outputs are required.
 Finally, \pggpu currently supports phased haplotypes and unphased
 diploid genotypes but does not yet handle low-coverage genotype
 likelihoods natively (cf.\ \angsd); extending the framework to
-genotype likelihoods is straightforward in principle and likely
-future work.
+genotype likelihoods is straightforward in principle and is
+part of planned future work.
 
 Looking forward, we see \pggpu as a foundation for two further
 directions: integration with simulation-based machine-learning
