@@ -399,24 +399,20 @@ Figures~\ref{fig:plink_pca} and~\ref{fig:moments_ld_decay}).
 Across the 23 Ag1000G 3R statistics with a directly comparable
 \scikitallel implementation (2{,}940 haplotypes, 10.9 million
 variants), the median \pggpu speedup is $139\times$ and the maximum
-is $1{,}096\times$ for Weir--Cockerham $F_{ST}$
-(Figure~\ref{fig:speedups}). Divergence and pairwise-LD kernels gain
-the most ($600$--$1{,}100\times$), single-population diversity and
-SFS statistics gain $130$--$380\times$, and haplotype-based selection
-scans (e.g., EHH decay, Garud's $H$, XP-EHH, iHS, nSL) gain
-$9$--$56\times$---bounded by the per-haplotype work that
-\scikitallel's C extensions already vectorize efficiently.
-Figure~\ref{fig:overview} shows the equivalence and the speedup
-together on a 50\,kb-windowed slice of the same data: $\pi$, an
-$R_0$-style heterozygosity ratio, Tajima's $D$, and the LD-decay
-curve overlay to within line width between \scikitallel and \pggpu while
-the windowed scan and LD-decay computation run $5.8\times$ and
-$254\times$ faster respectively. Absolute wall-clock comparisons per-statistic
-and are reported in Supplementary Figure~\ref{fig:walltimes}.
-A controlled cross-check on simulated two-population \msprime data
-recovers the same speedup pattern against both \scikitallel and
-\plinktwo (Supplementary Figure~\ref{fig:simbench}), confirming that
-the Ag1000G gains are not artifacts of the empirical dataset.
+$1{,}096\times$ (Weir--Cockerham $F_{ST}$; Figure~\ref{fig:speedups},
+Supplementary Figure~\ref{fig:walltimes}): divergence and pairwise-LD
+kernels gain the most ($600$--$1{,}100\times$), single-population
+diversity and SFS statistics $130$--$380\times$, and haplotype-based
+selection scans $9$--$56\times$, the last bounded by per-haplotype
+work that \scikitallel's C extensions already vectorize. On a
+50\,kb-windowed slice of the same data, \pggpu and \scikitallel
+estimates of $\pi$, an $R_0$-style heterozygosity ratio, Tajima's $D$,
+and LD decay overlay to within line width while the windowed scan and
+LD-decay computation run $5.8\times$ and $254\times$ faster
+(Figure~\ref{fig:overview}); a controlled cross-check on simulated
+two-population \msprime data reproduces the same speedup pattern
+against both \scikitallel and \plinktwo
+(Supplementary Figure~\ref{fig:simbench}).
 
 \begin{figure}[ht]
 \centering
@@ -453,20 +449,15 @@ existing optimized implementation limits the achievable gain
 \label{fig:speedups}
 \end{figure}
 
-Beyond windowed scans, multi-population LD parsing for
-demographic inference is a major bottleneck for \moments-LD
-\citep{ragsdale2019}. On a four-population coalescent simulation
-(105 LD statistics across 10 recombination-distance bins from a
-flat $\rho=1.5\times10^{-8}$ map, 10 replicates of 1\,Mb) \pggpu
-agrees with \moments-LD to a maximum relative error of
-$1.8\times 10^{-11}$ while reducing per-replicate parsing time from
-$256$\,s to $0.2$\,s---a $1{,}756 \pm 410\times$ speedup
-(Figure~\ref{fig:moments_ld}), making whole-genome LD-based
-inference tractable on standard hardware. A per-population-count
-breakdown on a separate, bp-binned stress test
-(Supplementary Figure~\ref{fig:moments_ld_breakdown}) shows
-$193\times$, $288\times$, and $246\times$ speedups for 2-, 3-, and
-4-population statistics respectively. 
+Multi-population LD parsing for demographic inference is a separate
+bottleneck \citep{ragsdale2019}. On a four-population coalescent
+simulation (105 LD statistics, 10 recombination-distance bins, 10
+replicates of 1\,Mb) \pggpu agrees with \moments-LD to a maximum
+relative error of $1.8\times 10^{-11}$ while cutting per-replicate
+parsing time from $256$\,s to $0.2$\,s---a $1{,}756 \pm 410\times$
+speedup (Figure~\ref{fig:moments_ld})---making whole-genome LD-based
+inference tractable on standard hardware; a per-population-count
+breakdown is given in Supplementary Figure~\ref{fig:moments_ld_breakdown}.
 
 \begin{figure}[ht]
 \centering
@@ -479,21 +470,17 @@ $\pi_2$, $H$) for a four-population split simulation (10 replicates;
 \label{fig:moments_ld}
 \end{figure}
 
-\comment{I moved some text around for clarity here.}
-Runtime scaling was characterized along two independent axes using
-\msprime simulations (Figure~\ref{fig:scaling}; \cite{baumdicker2022}).
-For sample-size scaling we held the variant count fixed at 100{,}000 and varied the
-number of samples (haplotypes) from 100 to 100{,}000; for variant-count scaling
-we held sample size at 200 samples and varied the span of the simulated
-sequence length to carry from $\sim 10^3$ to $\sim 10^6$ segregating sites,
-with realistic LD structure. Per-site
-statistics scale linearly on both axes and complete in well under a
-second across the tested range. Two-locus statistics show the
-expected $O(n^2)$ scaling with sample size for Garud's $H$ and a
-sub-quadratic profile for $Z_{nS}$, which uses a sampled-pairs
-estimator. At the largest tested configuration (100{,}000 haplotypes,
-100{,}000 variants) all single-pass statistics complete in under
-ten seconds on a single A100.
+Runtime scaling was characterized along two axes with \msprime
+simulations \citep{baumdicker2022}: sample size (100 to 100{,}000
+haplotypes at a fixed 100{,}000 variants) and variant count ($\sim
+10^3$ to $\sim 10^6$ segregating sites at a fixed 200 haplotypes, with
+realistic LD; Figure~\ref{fig:scaling}). Per-site statistics scale
+linearly on both axes and finish in well under a second across the
+tested range; two-locus statistics show the expected $O(n^2)$ growth
+with sample size for Garud's $H$ and a sub-quadratic profile for
+$Z_{nS}$ (a sampled-pairs estimator). At the largest configuration
+tested (100{,}000 haplotypes $\times$ 100{,}000 variants) every
+single-pass statistic completes in under ten seconds on one A100.
 
 \begin{figure}[ht]
 \centering
