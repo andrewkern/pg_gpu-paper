@@ -19,3 +19,7 @@
 
 # PDF output (uncomment to track)
 # *.pdf
+
+# Vim
+*.swo
+*.swp
