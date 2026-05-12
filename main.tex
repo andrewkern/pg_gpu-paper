@@ -171,8 +171,8 @@ these analyses into the Python ecosystem with NumPy-based array operations,
 offering a broader repertoire of statistics including haplotype-based selection
 scans and $F$-statistics; however, it is no longer under active development.
 \pixy \citep{korunes2021, bailey2025} addressed the important problem of missing
-data bias in estimates of $\pi$, $d_{XY}$, $F_{ST}$, Tajima's $D$, and Watterson's
-$\theta$, but is limited to those five statistics.
+data bias in estimates of $\pi$, $d_{XY}$, $F_{ST}$, Tajima's $D$, and $\theta_W$,
+but is limited to those five statistics.
 \comment{Pixy v2 now includes Tajima's D and theta. I think it is important to mention
 those as well, so I added the citation to the new version.}
 At the other end of the spectrum, \plink
@@ -267,7 +267,7 @@ the site frequency spectrum, linkage disequilibrium, haplotype-based selection
 scans, admixture statistics, PCA, and relatedness---covering the large majority
 of statistics in routine use. The library introduces fused CUDA kernels that
 compute multiple statistics in a single pass over the data, and implements the
-generalized theta \comment{$\theta$?} framework of \citet{achaz2009} to efficiently derive all
+generalized $\theta$ framework of \citet{achaz2009} to efficiently derive all
 standard diversity and neutrality test statistics from a single site frequency
 spectrum computation. \pggpu provides a drop-in replacement for the LD parsing
 module of \moments, achieving roughly $1{,}750$-fold speedups while
@@ -298,6 +298,9 @@ $n_{\mathrm{hap}}\times n_{\mathrm{var}}$ \texttt{int8} array (with $-1$
 denoting missing genotypes), variant positions, and optional named
 sample sets. The companion \texttt{GenotypeMatrix} stores unphased
 diploid genotypes in a $n_{\mathrm{var}}\times n_{\mathrm{samp}}$
+\comment{the HapMatrix is described as haps x vars. GenMatrix is described
+as vars x samps. Are the data structures also like that? I can't recall. If not,
+I would make them both uniform to haps/samps x vars.}
 \texttt{uint8} layout for kernels whose arithmetic naturally factorizes over
 the genotype tabulation $(n_{AA}, n_{Aa}, n_{aa})$. Both classes
 retain a single canonical buffer per object and route between CPU
@@ -314,7 +317,7 @@ supporting both \biotzarr/\vcz \citep{czech2024vcz} and \scikitallel
 Most population-genetics statistics decompose into per-site or
 per-pair reductions whose CPU implementations are bandwidth-bound:
 each pass over the haplotype matrix reads tens of gigabytes of memory
-to emit a handful of summary scalars. \pggpu exploits this by writing
+to emit a handful of summary scalars. \pggpu takes advantage of this by writing
 \emph{fused} kernels that read each input element once and emit
 \emph{any subset} of a related family of statistics from registers
 in a single launch. The user-facing entry point
@@ -339,7 +342,8 @@ scalar formulas in double precision in a single thread per output.
 \subsection*{Memory-aware chunking}
 
 A naive single-launch fused kernel materialises a transposed copy of
-the matrix in a working dtype (typically int8 or float32), which can
+the matrix in a working \texttt{dtype} (typically \texttt{int8} or
+\texttt{float32}), which can
 exceed GPU memory at biobank scales. \pggpu computes a chunk size at
 runtime from the free-memory query %\texttt{cp.cuda.Device().mem\_info}
 and dispatches to a chunked variant when the projected working set
@@ -357,7 +361,9 @@ the genome do not bias the result. An \texttt{AccessibleMask}
 boolean array attached to the matrix gives a lazy filtered view of
 the haplotypes at accessible positions only, and the inferred total
 callable-bases count is propagated automatically as the denominator
-for per-base normalization. 
+for per-base normalization. \comment{To describe this a bit more, it
+might be good to mention that this is, from my understanding, the same
+or similar setup as the one used by scikit allel.}
 
 \subsection*{Generalized $\theta$ framework}
 
@@ -379,7 +385,7 @@ patterns.
 \moments \citep{jouganous2017}: the
 \texttt{compute\_ld\_statistics} function consumes the same VCF /
 recombination-map / population-file inputs and returns a dictionary
-in \moments' canonical \texttt{(bins, sums, stats, pops)} schema, so
+in \moments' canonical schema \texttt{(bins, sums, stats, pops)}, so
 existing \texttt{moments.LD.Parsing.bootstrap\_data},
 \texttt{optimize\_log\_lbfgsb}, and Godambe pipelines accept the
 output unchanged. Local-PCA / \lostruct \citep{li2019} is implemented
@@ -427,7 +433,7 @@ corresponds to a Python module
 that takes a \texttt{HaplotypeMatrix} or \texttt{GenotypeMatrix} as its
 first argument and returns a \numpy array. Population labels assigned
 once via \texttt{load\_pop\_file} are accepted by every statistic that
-needs them, so \texttt{divergence.fst\_hudson(h, "pop1", "pop2")} and
+needs them, i.e., \texttt{divergence.fst\_hudson(h, "pop1", "pop2")} and
 \texttt{diversity.tajimas\_d(h, population="pop1")} share the same
 calling convention. Where a statistic is defined for both phased and
 diploid input, the same call dispatches on container type:
