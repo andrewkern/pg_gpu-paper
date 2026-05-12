@@ -94,7 +94,7 @@
 
 \title{GPU accelerated population genetics statistics using \texttt{pg\_gpu}}
 \author[1, 2]{Nathaniel S. Pope}
-\author[1, 2]{Angel Rivera-Colón}
+\author[1, 2]{Angel G. Rivera-Col\'{o}n}
 \author[1, 2]{Ananya Kapoor}
 \author[3]{Kevin Korfmann}
 \author[1, 2, *]{Andrew D. Kern}
@@ -175,9 +175,12 @@ the early 1000 Genomes era. \scikitallel \citep{miles2024} brought
 these analyses into the Python ecosystem with NumPy-based array operations,
 offering a broader repertoire of statistics including haplotype-based selection
 scans and $F$-statistics; however, it is no longer under active development.
-\pixy \citep{korunes2021} addressed the important problem of missing
-data bias in estimates of $\pi$, $d_{XY}$, and $F_{ST}$, but is limited to
-those three statistics. At the other end of the spectrum, \plink
+\pixy \citep{korunes2021, bailey2025} addressed the important problem of missing
+data bias in estimates of $\pi$, $d_{XY}$, $F_{ST}$, Tajima's $D$, and $\theta_W$,
+but is limited to those five statistics.
+\comment{Pixy v2 now includes Tajima's D and theta. I think it is important to mention
+those as well, so I added the citation to the new version.}
+At the other end of the spectrum, \plink
 \citep{purcell2007, chang2015} and \angsd \citep{korneliussen2014} are
 high-performance C/C++ tools but are oriented toward GWAS and genotype
 likelihood workflows, respectively, rather than offering a 
@@ -288,7 +291,7 @@ written as \texttt{cupy.RawKernel} extensions and dense linear-algebra
 operations dispatched to \cublas via \cupy. The package depends only on
 \cupy \citep{cupy2017}, \numpy \citep{harris2020},
 \scipy \citep{virtanen2020}, \scikitallel \citep{miles2024},
-\msprime \citep{baumdicker2022}, and \zarr, and is distributed via a
+\msprime \citep{baumdicker2022}, and \zarr. \pggpu is distributed via a
 \pixi environment that pins a CUDA 12 build of \cupy together
 with all Python dependencies, so a complete analysis stack can be
 installed with a single command.
@@ -297,10 +300,13 @@ installed with a single command.
 
 Two thin wrapper classes carry data through every analysis path. The
 \texttt{HaplotypeMatrix} stores phased haplotypes as an
-$n_{\mathrm{hap}}\times n_{\mathrm{var}}$ int8 array (with $-1$
+$n_{\mathrm{hap}}\times n_{\mathrm{var}}$ 8-bit integer array (with $-1$
 denoting missing genotypes), variant positions, and optional named
 sample sets. The companion \texttt{GenotypeMatrix} stores unphased
 diploid genotypes in a $n_{\mathrm{var}}\times n_{\mathrm{samp}}$
+\comment{the HapMatrix is described as haps x vars. GenMatrix is described
+as vars x samps. Are the data structures also like that? I can't recall. If not,
+I would make them both uniform to haps/samps x vars.}
 8-bit unsigned integer layout for kernels whose arithmetic naturally factorizes over
 the genotype tabulation $(n_{AA}, n_{Aa}, n_{aa})$. Both classes
 retain a single canonical buffer per object and route between CPU
@@ -318,7 +324,7 @@ Most population-genetics statistics decompose into per-site or
 % NSP 8-May-26: what does "bandwidth" mean here?
 per-pair reductions whose CPU implementations are bandwidth-bound:
 each pass over the haplotype matrix reads tens of gigabytes of memory
-to emit a handful of summary scalars. \pggpu exploits this by writing
+to emit a handful of summary scalars. \pggpu takes advantage of this by writing
 \emph{fused} kernels that read each input element once and emit
 \emph{any subset} of a related family of statistics from registers
 in a single launch. The user-facing entry point
@@ -377,6 +383,9 @@ per-site number is itself unbiased. The per-site valid-sample-count
 handling keeps the diversity estimator unbiased across missing-data
 rates from 0 to 60\,\%
 (Supplementary Figure~\ref{fig:missing_bias}).
+\comment{To describe this a bit more, it
+might be good to mention that this is, from my understanding, the same
+or similar setup as the one used by scikit allel.}
 
 \subsection*{Generalized $\theta$ framework}
 
@@ -407,7 +416,7 @@ patterns.
 \moments \citep{ragsdale2019}: the
 \texttt{compute\_ld\_statistics} function consumes the same VCF /
 recombination-map / population-file inputs and returns a dictionary
-in \moments' canonical \texttt{(bins, sums, stats, pops)} schema, so
+in \moments' canonical schema \texttt{(bins, sums, stats, pops)}, so
 existing infrastructure (i.e. \texttt{moments.LD.Parsing.bootstrap\_data},
 \texttt{optimize\_log\_lbfgsb}, and uncertainty quantification) accept the
 output unchanged. Local-PCA / \lostruct \citep{li2019} is implemented
@@ -466,7 +475,7 @@ corresponds to a Python module
 that takes a \texttt{HaplotypeMatrix} or \texttt{GenotypeMatrix} as its
 first argument and returns a \numpy array. Population labels assigned
 once via \texttt{load\_pop\_file} are accepted by every statistic that
-needs them, so \texttt{divergence.fst\_hudson(h, "pop1", "pop2")} and
+needs them, i.e., \texttt{divergence.fst\_hudson(h, "pop1", "pop2")} and
 \texttt{diversity.tajimas\_d(h, population="pop1")} share the same
 calling convention. Where a statistic is defined for both phased and
 diploid input, the same call dispatches on container type:
@@ -509,7 +518,7 @@ user-supplied callable that returns a weight vector;
 \texttt{neutrality\_test} pairs any two estimators into a normalised
 $D$-style test statistic with a variance computed from the cached
 $\alpha_n,\beta_n$ coefficients of \citet{achaz2009}, so a custom
-neutrality test built around an unusual weighting (for example,
+neutrality test built around an unusual weighting (e.g.,
 higher order powers of the frequency spectrum) is one call rather than a hand-derived
 variance formula; and \texttt{project} produces a hypergeometrically
 sub-sampled SFS at any target sample size~\citep{gutenkunst2009},
@@ -597,7 +606,7 @@ across all nine LD statistics shown
 \centering
 \small
 \caption{Agreement between \pggpu and \scikitallel on Ag1000G 3L
-(2940 haplotypes, 436{,}555 biallelic sites). Scalar statistics report
+(2{,}940 haplotypes, 436{,}555 biallelic sites). Scalar statistics report
 the relative error $|x_{\text{pg}} - x_{\text{al}}| / |x_{\text{al}}|$.
 Vector statistics (SFS, windowed scans) report the Pearson correlation
 across $n$ entries; for windowed statistics the median per-window
@@ -644,7 +653,7 @@ is $1{,}096\times$ for Weir--Cockerham $F_{ST}$
 (Figure~\ref{fig:speedups}). Divergence and pairwise-LD kernels gain
 the most ($600$--$1{,}100\times$), single-population diversity and
 SFS statistics gain $130$--$380\times$, and haplotype-based selection
-scans (EHH decay, Garud's $H$, XP-EHH, iHS, nSL) gain
+scans (e.g., EHH decay, Garud's $H$, XP-EHH, iHS, nSL) gain
 $9$--$56\times$---bounded by the per-haplotype work that
 \scikitallel's C extensions already vectorize efficiently.
 Figure~\ref{fig:overview} shows the equivalence and the speedup
@@ -672,6 +681,11 @@ and the two \pggpu LD estimators (Rogers--Huff and unbiased
 $\sigma_d^2$). Horizontal bars at the bottom: wall-clock times for
 the windowed scan ($5.8\times$ faster) and LD-decay computation
 ($254\times$ faster).}
+\comment{Since the lines overlap in the first three panels, I wonder
+if we should make the scikit-allele line a different color so see if we
+can increase the contrast between the two a little bit. They would still
+overlap, maybe we can see the outline of the scikit-allele line a bit more.
+This is also a PNG image, so it might be easier to see in the SVG/PDF anyway.}
 \label{fig:overview}
 \end{figure}
 
@@ -720,13 +734,14 @@ $\pi_2$, $H$) for a four-population split simulation (10 replicates;
 \label{fig:moments_ld}
 \end{figure}
 
-Runtime scaling was characterised along two independent axes
-(Figure~\ref{fig:scaling}). For sample-size scaling we held the
-variant count fixed at 100{,}000 and varied the number of samples (haplotypes) from 100 to
-100{,}000; for variant-count scaling
-we held sample size at 200 samples and varied \msprime simulated
-\citep{baumdicker2022} sequence length to carry from $\sim 10^3$ to
-$\sim 10^6$ segregating sites, with realistic LD structure. Per-site
+\comment{I moved some text around for clarity here.}
+Runtime scaling was characterized along two independent axes using
+\msprime simulations (Figure~\ref{fig:scaling}; \cite{baumdicker2022}).
+For sample-size scaling we held the variant count fixed at 100{,}000 and varied the
+number of samples (haplotypes) from 100 to 100{,}000; for variant-count scaling
+we held sample size at 200 samples and varied the span of the simulated
+sequence length to carry from $\sim 10^3$ to $\sim 10^6$ segregating sites,
+with realistic LD structure. Per-site
 statistics scale linearly on both axes and complete in well under a
 second across the tested range. Two-locus statistics show the
 expected $O(n^2)$ scaling with sample size for Garud's $H$ and a
@@ -769,6 +784,9 @@ so a single A100 reduces the population-genetic scan from over an hour
 to seconds while recovering the expected genome-wide
 signatures: $\pi$ heterogeneity, negative Tajima's $D$ consistent
 with non-equilibrium demography and selection, and elevated Hudson $F_{ST}$ between subspecies.
+\comment{Andy, you had mentioned during lab meeting that this could be
+generated from a single function once the data is loaded. Is that still
+correct? If so, I would definitely mention it here.}
 
 \begin{figure}[ht]
 \centering
@@ -782,6 +800,9 @@ mean nSL, and segregating-site density. Right column: West African
 unfolded SFS, joint SFS heatmap (West vs.\ East), and per-step compute
 time. Total compute time is 30\,s on a single A100 GPU; total wall
 time including I/O is 168\,s.}
+\comment{For the left panel, the caption mentions 9 (1. pi, 2. theta w,
+3. Taj D, 4. F\&W H, 5. Fst, 6. Dxy, 7. H12, 8. nSL, 9. seg-site density) stats but there are 8 plots. Also, the caption does not mention the
+highlight of Gste in those left panel plots.}
 \label{fig:scan}
 \end{figure}
 
@@ -845,18 +866,20 @@ into existing \moments code by changing a single import.
 
 \begin{figure}[ht]
 \centering
-\begin{minipage}{0.32\textwidth}
+\begin{minipage}{0.4\textwidth}
 \centering
 \includegraphics[width=\textwidth]{moments_3pop_true_model.png}
 \subcaption{Three-population isolation model used for simulation.}
 \end{minipage}\hfill
-\begin{minipage}{0.66\textwidth}
+\begin{minipage}{0.4\textwidth}
 \centering
 \includegraphics[width=\textwidth,height=0.78\textheight,keepaspectratio]{moments_3pop_fitted_vs_observed.png}
 \subcaption{LD decay curves under the inferred model (\pggpu-calculated,
 blue; \moments-parsed, green; truth, dashed orange) and
 empirical bin estimates (black points). Inference using the two
-parsers is indistinguishable.}
+parsers is indistinguishable. \comment{First, we should play around
+with the scaling of this fig. I reduced its size to fit it on the page,
+but it is now too small. Also, I am only seeing the solid dashed and blue lines.}}
 \end{minipage}
 \caption{Demographic inference using \pggpu as the
 \texttt{moments.LD} parser. The drop-in replacement preserves
@@ -1122,8 +1145,10 @@ drop-in replacement for the \texttt{moments.LD} parsing module.}
 \multirow{5}{*}{Dim.\ reduction} & PCA & \citep{patterson2006} \\
  & Randomised PCA & \citep{halko2011} \\
  & PCoA (classical MDS) & -- \\
- & Local PCA / \lostruct (windowed eigendecomposition) & \citep{li2019} \\
- & Corner detection (Welzl minimum enclosing circle) & \citep{li2019} \\
+ & \shortstack[l]{Local PCA / \lostruct \\ ~~(windowed eigendecomposition)} &
+     \citep{li2019} \\
+ & \shortstack[l]{Corner detection (Welzl \\ ~~minimum enclosing circle)} &
+     \citep{li2019} \\
 \midrule
 
 % Resampling
@@ -1133,7 +1158,8 @@ drop-in replacement for the \texttt{moments.LD} parsing module.}
 
 % Generalized theta framework
 \multirow{3}{*}{Generalized $\theta$} & Weighted-SFS $\theta$ estimator & \citep{achaz2009} \\
- & Paired neutrality tests with cached variance & \citep{achaz2009} \\
+ & \shortstack[l]{Paired neutrality tests \\ ~~with cached variance} &
+    \citep{achaz2009} \\
  & SFS projection (hypergeometric) & \citep{gutenkunst2009} \\
 \midrule
 
