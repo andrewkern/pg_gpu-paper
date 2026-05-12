@@ -94,7 +94,7 @@
 
 \title{GPU accelerated population genetics statistics using \texttt{pg\_gpu}}
 \author[1, 2]{Nathaniel S. Pope}
-\author[1, 2]{Angel Rivera-Colón}
+\author[1, 2]{Angel G. Rivera-Col\'{o}n}
 \author[1, 2]{Ananya Kapoor}
 \author[1, 2]{Kevin Korfmann}
 \author[1, 2, *]{Andrew D. Kern}
@@ -131,7 +131,7 @@ relatedness, resampling, and a generalised weighted-SFS framework for
 custom $\theta$ estimators. On the full Ag1000G Phase 3 chromosome 3R
 arm (2{,}940 haplotypes, 10.9 million variants) \pggpu agrees with
 \scikitallel and \plinktwo to machine precision while delivering a
-median $139\times$ and maximum $1{,}096\times$ speedup; for
+median 139-fold and maximum 1{,}096-fold speedup; for
 multi-population LD parsing in \moments-based demographic inference,
 \pggpu is a drop-in replacement that yields a $\sim$1{,}750-fold
 speedup. Whole-arm scans, \lostruct screens, and end-to-end
@@ -152,8 +152,6 @@ moments LD-parsing breakdown are available at the journal website.
 
 \section*{Introduction}
 
-% testing
-
 Population genetics relies on a rich toolkit of summary statistics to characterize
 genetic variation within and between populations. Statistics such as nucleotide
 diversity ($\pi$), Tajima's $D$, $F_{ST}$, and linkage disequilibrium (LD) are
@@ -172,9 +170,12 @@ the early 1000 Genomes era. \scikitallel \citep{miles2024} brought
 these analyses into the Python ecosystem with NumPy-based array operations,
 offering a broader repertoire of statistics including haplotype-based selection
 scans and $F$-statistics; however, it is no longer under active development.
-\pixy \citep{korunes2021} addressed the important problem of missing
-data bias in estimates of $\pi$, $d_{XY}$, and $F_{ST}$, but is limited to
-those three statistics. At the other end of the spectrum, \plink
+\pixy \citep{korunes2021, bailey2025} addressed the important problem of missing
+data bias in estimates of $\pi$, $d_{XY}$, $F_{ST}$, Tajima's $D$, and Watterson's
+$\theta$, but is limited to those five statistics.
+\comment{Pixy v2 now includes Tajima's D and theta. I think it is important to mention
+those as well, so I added the citation to the new version.}
+At the other end of the spectrum, \plink
 \citep{purcell2007, chang2015} and \angsd \citep{korneliussen2014} are
 high-performance C/C++ tools but are oriented toward GWAS and genotype
 likelihood workflows, respectively, rather than offering a 
@@ -266,7 +267,7 @@ the site frequency spectrum, linkage disequilibrium, haplotype-based selection
 scans, admixture statistics, PCA, and relatedness---covering the large majority
 of statistics in routine use. The library introduces fused CUDA kernels that
 compute multiple statistics in a single pass over the data, and implements the
-generalized theta framework of \citet{achaz2009} to efficiently derive all
+generalized theta \comment{$\theta$?} framework of \citet{achaz2009} to efficiently derive all
 standard diversity and neutrality test statistics from a single site frequency
 spectrum computation. \pggpu provides a drop-in replacement for the LD parsing
 module of \moments, achieving roughly $1{,}750$-fold speedups while
@@ -284,7 +285,7 @@ written as \texttt{cupy.RawKernel} extensions and dense linear-algebra
 operations dispatched to \cublas via \cupy. The package depends only on
 \cupy \citep{cupy2017}, \numpy \citep{harris2020},
 \scipy \citep{virtanen2020}, \scikitallel \citep{miles2024},
-\msprime \citep{baumdicker2022}, and \zarr, and is distributed via a
+\msprime \citep{baumdicker2022}, and \zarr. \pggpu is distributed via a
 \pixi environment that pins a CUDA 12 build of \cupy together
 with all Python dependencies, so a complete analysis stack can be
 installed with a single command.
@@ -293,11 +294,11 @@ installed with a single command.
 
 Two thin wrapper classes carry data through every analysis path. The
 \texttt{HaplotypeMatrix} stores phased haplotypes as an
-$n_{\mathrm{hap}}\times n_{\mathrm{var}}$ int8 array (with $-1$
+$n_{\mathrm{hap}}\times n_{\mathrm{var}}$ \texttt{int8} array (with $-1$
 denoting missing genotypes), variant positions, and optional named
 sample sets. The companion \texttt{GenotypeMatrix} stores unphased
 diploid genotypes in a $n_{\mathrm{var}}\times n_{\mathrm{samp}}$
-uint8 layout for kernels whose arithmetic naturally factorizes over
+\texttt{uint8} layout for kernels whose arithmetic naturally factorizes over
 the genotype tabulation $(n_{AA}, n_{Aa}, n_{aa})$. Both classes
 retain a single canonical buffer per object and route between CPU
 (\numpy) and GPU (\cupy) backings transparently via a \texttt{device}
