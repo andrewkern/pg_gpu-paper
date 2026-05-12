@@ -473,7 +473,7 @@ user-supplied callable that returns a weight vector;
 \texttt{neutrality\_test} pairs any two estimators into a normalised
 $D$-style test statistic with a variance computed from the cached
 $\alpha_n,\beta_n$ coefficients of \citet{achaz2009}, so a custom
-neutrality test built around an unusual weighting (for example,
+neutrality test built around an unusual weighting (e.g.,
 higher order powers of the frequency spectrum) is one call rather than a hand-derived
 variance formula; and \texttt{project} produces a hypergeometrically
 sub-sampled SFS at any target sample size~\citep{gutenkunst2009},
@@ -549,7 +549,7 @@ $1.7\times 10^{-8}$.
 \centering
 \small
 \caption{Agreement between \pggpu and \scikitallel on Ag1000G 3L
-(2940 haplotypes, 436{,}555 biallelic sites). Scalar statistics report
+(2{,}940 haplotypes, 436{,}555 biallelic sites). Scalar statistics report
 the relative error $|x_{\text{pg}} - x_{\text{al}}| / |x_{\text{al}}|$.
 Vector statistics (SFS, windowed scans) report the Pearson correlation
 across $n$ entries; for windowed statistics the median per-window
@@ -596,7 +596,7 @@ is $1{,}096\times$ for Weir--Cockerham $F_{ST}$
 (Figure~\ref{fig:speedups}). Divergence and pairwise-LD kernels gain
 the most ($600$--$1{,}100\times$), single-population diversity and
 SFS statistics gain $130$--$380\times$, and haplotype-based selection
-scans (EHH decay, Garud's $H$, XP-EHH, iHS, nSL) gain
+scans (e.g., EHH decay, Garud's $H$, XP-EHH, iHS, nSL) gain
 $9$--$56\times$---bounded by the per-haplotype work that
 \scikitallel's C extensions already vectorize efficiently.
 Figure~\ref{fig:overview} shows the equivalence and the speedup
@@ -621,6 +621,11 @@ and the two \pggpu LD estimators (Rogers--Huff and unbiased
 $\sigma_d^2$). Horizontal bars at the bottom: wall-clock times for
 the windowed scan ($5.8\times$ faster) and LD-decay computation
 ($254\times$ faster).}
+\comment{Since the lines overlap in the first three panels, I wonder
+if we should make the scikit-allele line a different color so see if we
+can increase the contrast between the two a little bit. They would still
+overlap, maybe we can see the outline of the scikit-allele line a bit more.
+This is also a PNG image, so it might be easier to see in the SVG/PDF anyway.}
 \label{fig:overview}
 \end{figure}
 
@@ -659,12 +664,12 @@ $\pi_2$, $H$) for a four-population split simulation (10 replicates;
 \label{fig:moments_ld}
 \end{figure}
 
-Runtime scaling was characterized along two independent axes
-(Figure~\ref{fig:scaling}). For sample-size scaling we held the
-variant count fixed at 100{,}000 and varied haplotypes from 100 to
-100{,}000 (simulated genotypes); for variant-count scaling
-we held sample size at 200 haplotypes and varied \msprime simulated
-\citep{baumdicker2022} sequence length to span $\sim 10^3$ to
+\comment{I moved some text around for clarity here.}
+Runtime scaling was characterized along two independent axes using
+\msprime simulations (Figure~\ref{fig:scaling}; \cite{baumdicker2022}).
+For sample-size scaling we held the variant count fixed at 100{,}000 and varied haplotypes from 100 to 100{,}000.
+For variant-count scaling, we held sample size at 200 haplotypes and
+varied the span of the simulated sequence length from $\sim 10^3$ to
 $\sim 10^6$ segregating sites with realistic LD structure. Per-site
 statistics scale linearly on both axes and complete in well under a
 second across the tested range. Two-locus statistics show the
@@ -705,6 +710,9 @@ so a single A100 reduces the population-genetic scan from over an hour
 to seconds while recovering the expected genome-wide
 signatures: $\pi$ heterogeneity, negative Tajima's $D$ consistent
 with non-equilibrium demography and selection, and elevated Hudson $F_{ST}$ between subspecies.
+\comment{Andy, you had mentioned during lab meeting that this could be
+generated from a single function once the data is loaded. Is that still
+correct? If so, I would definitely mention it here.}
 
 \begin{figure}[ht]
 \centering
@@ -718,6 +726,9 @@ mean nSL, and segregating-site density. Right column: West African
 unfolded SFS, joint SFS heatmap (West vs.\ East), and per-step compute
 time. Total compute time is 30\,s on a single A100 GPU; total wall
 time including I/O is 168\,s.}
+\comment{For the left panel, the caption mentions 9 (1. pi, 2. theta w,
+3. Taj D, 4. F\&W H, 5. Fst, 6. Dxy, 7. H12, 8. nSL, 9. seg-site density) stats but there are 8 plots. Also, the caption does not mention the
+highlight of Gste in those left panel plots.}
 \label{fig:scan}
 \end{figure}
 
@@ -781,18 +792,20 @@ in Figure~\ref{fig:moments_ld}. Existing \moments pipelines adopt
 
 \begin{figure}[ht]
 \centering
-\begin{minipage}{0.32\textwidth}
+\begin{minipage}{0.4\textwidth}
 \centering
 \includegraphics[width=\textwidth]{moments_3pop_true_model.png}
 \subcaption{Three-population isolation model used for simulation.}
 \end{minipage}\hfill
-\begin{minipage}{0.66\textwidth}
+\begin{minipage}{0.4\textwidth}
 \centering
 \includegraphics[width=\textwidth]{moments_3pop_fitted_vs_observed.png}
 \subcaption{LD curves under the inferred model (\pggpu-parsed,
 blue; \moments-parsed, green; truth, dashed orange) and
 empirical bin estimates (black points). Inference using the two
-parsers is indistinguishable.}
+parsers is indistinguishable. \comment{First, we should play around
+with the scaling of this fig. I reduced its size to fit it on the page,
+but it is now too small. Also, I am only seeing the solid dashed and blue lines.}}
 \end{minipage}
 \caption{End-to-end demographic inference using \pggpu as the
 \texttt{moments.LD} parser. The drop-in replacement preserves
@@ -1043,8 +1056,10 @@ drop-in replacement for the \texttt{moments.LD} parsing module.}
 \multirow{5}{*}{Dim.\ reduction} & PCA & \citep{patterson2006} \\
  & Randomized PCA & \citep{halko2011} \\
  & PCoA (classical MDS) & -- \\
- & Local PCA / \lostruct (windowed eigendecomposition) & \citep{li2019} \\
- & Corner detection (Welzl minimum enclosing circle) & \citep{li2019} \\
+ & \shortstack[l]{Local PCA / \lostruct \\ ~~(windowed eigendecomposition)} &
+     \citep{li2019} \\
+ & \shortstack[l]{Corner detection (Welzl \\ ~~minimum enclosing circle)} &
+     \citep{li2019} \\
 \midrule
 
 % Resampling
@@ -1054,7 +1069,8 @@ drop-in replacement for the \texttt{moments.LD} parsing module.}
 
 % Generalized theta framework
 \multirow{3}{*}{Generalized $\theta$} & Weighted-SFS $\theta$ estimator & \citep{achaz2009} \\
- & Paired neutrality tests with cached variance & \citep{achaz2009} \\
+ & \shortstack[l]{Paired neutrality tests \\ ~~with cached variance} &
+    \citep{achaz2009} \\
  & SFS projection (hypergeometric) & \citep{gutenkunst2009} \\
 \midrule
 
