@@ -485,7 +485,7 @@ correct? If so, I would definitely mention it here.}
 \begin{figure}[ht]
 \centering
 \includegraphics[width=\textwidth]{ag1000g_genome_scan.png}
-\caption{Scan of Ag1000G chromosome 3R using \pggpu.
+\caption{Multi-statistic scan of Ag1000G chromosome 3R using \pggpu.
 Left column: genome-wide windowed statistics (100\,kb windows, 10\,kb
 step) including diversity ($\pi$, $\theta_W$), neutrality tests
 (Tajima's $D$, Fay \& Wu's $H^*$), divergence between West and East
@@ -823,20 +823,19 @@ Figure~\ref{fig:moments_ld}.
 
 \begin{figure}[ht]
 \centering
-\begin{minipage}{0.4\textwidth}
+\begin{minipage}{\textwidth}
 \centering
-\includegraphics[width=\textwidth]{moments_3pop_true_model.png}
+\includegraphics[width=0.5\textwidth]{moments_3pop_true_model.png}
 \subcaption{Three-population isolation model used for simulation.}
-\end{minipage}\hfill
-\begin{minipage}{0.4\textwidth}
+\end{minipage}
+
+\begin{minipage}{\textwidth}
 \centering
-\includegraphics[width=\textwidth,height=0.78\textheight,keepaspectratio]{moments_3pop_fitted_vs_observed.png}
+\includegraphics[width=\textwidth,keepaspectratio]{moments_3pop_fitted_vs_observed.png}
 \subcaption{LD decay curves under the inferred model (\pggpu-calculated,
 blue; \moments-parsed, green; truth, dashed orange) and
 empirical bin estimates (black points). Inference using the two
-parsers is indistinguishable. \comment{First, we should play around
-with the scaling of this fig. I reduced its size to fit it on the page,
-but it is now too small. Also, I am only seeing the solid dashed and blue lines.}}
+parsers is indistinguishable.}
 \end{minipage}
 \caption{Demographic inference using \pggpu as the
 \texttt{moments.LD} parser. The drop-in replacement preserves
@@ -951,7 +950,7 @@ speedup ($\sim$1{,}750$\times$) is realized.
 function consumes the same \vcf / recombination-map / population-file
 inputs and returns a dictionary in \moments' canonical schema
 \texttt{(bins, sums, stats, pops)}, so existing infrastructure
-(\texttt{moments.LD.Parsing.bootstrap\_data}, \texttt{optimize\_log\_lbfgsb},
+(\texttt{moments.\allowbreak LD.\allowbreak Parsing.\allowbreak bootstrap\_data}, \texttt{optimize\_log\_lbfgsb},
 and uncertainty quantification) accepts the output unchanged. Local PCA
 / \lostruct \citep{li2019} is implemented as a single batched-Gram
 eigendecomposition over windowed views of the matrix; the subsequent
