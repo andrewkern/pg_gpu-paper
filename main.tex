@@ -35,6 +35,7 @@
 \newcommand{\vcftools}{\texttt{VCFtools}\xspace}
 \newcommand{\scikitallel}{\texttt{scikit-allel}\xspace}
 \newcommand{\pixy}{\texttt{pixy}\xspace}
+\newcommand{\clam}{\texttt{clam}\xspace}
 \newcommand{\plink}{\texttt{PLINK}\xspace}
 \newcommand{\plinktwo}{\texttt{PLINK2}\xspace}
 \newcommand{\angsd}{\texttt{ANGSD}\xspace}
@@ -99,10 +100,10 @@
 \author[3]{Kevin Korfmann}
 \author[4]{Murillo F. Rodrigues}
 \author[1, 2, *]{Andrew D. Kern}
-\affil[1]{\small{University of Oregon, Institute of Ecology and Evolution}}
-\affil[2]{\small{University of Oregon, Department of Biology}}
-\affil[3]{\small{University of Pennsylvania, Department of Biology}}
-\affil[4]{\small{Oregon Health \& Science University, Division of Genetics}}
+\affil[1]{\small{Institute of Ecology and Evolution, University of Oregon}}
+\affil[2]{\small{Department of Biology, University of Oregon}}
+\affil[3]{\small{Department of Biology, University of Pennsylvania}}
+\affil[4]{\small{Oregon National Primate Research Center, Oregon Health \& Science University}}
 \affil[*]{\small{Corresponding author: \href{mailto:adkern@uoregon.edu}{adkern@uoregon.edu}}}
 
 \date{\small{\today{}}}
@@ -112,12 +113,12 @@
 \maketitle
 
 \begin{abstract}
-\noindent\textbf{Motivation:} Population-genetics summary
+\noindent\textbf{Motivation:} Population genetics summary
 statistics---diversity, divergence, linkage disequilibrium, selection
 scans, and dimensionality reduction---are fundamental across human,
 agricultural, and ecological genomics. As whole-genome sequencing
 datasets have grown to hundreds of thousands of individuals, the
-cost of these statistics on conventional CPU implementations has
+cost of computing these statistics on conventional CPU implementations has
 become a major bottleneck: windowed scans of a single chromosome arm
 can take hours to days, and computation of pairwise linkage-disequilibrium
 statistics useful for demographic inference scales as $O(n^2)$ in
@@ -170,36 +171,39 @@ as the Anopheles 1000 Genomes \citep{ag1000g2017} and UK Biobank
 serious bottleneck.
 
 A number of software tools have been developed to compute population genetics
-statistics from genomic data. \vcftools \citep{danecek2011} was among the first
-general-purpose tools, providing command-line access to diversity, $F_{ST}$,
+statistics from genomic data. \plink \citep{purcell2007,chang2015} was the first 
+high-performance tool to offer a broad range of genome-wide association as well as 
+other simple population-based summaries. \vcftools \citep{danecek2011} was a
+general-purpose tool that provided command-line access to diversity, $F_{ST}$,
 and LD calculations from VCF files, but was designed for the sample sizes of
-the early 1000 Genomes era. \scikitallel \citep{miles2024} brought
-these analyses into the Python ecosystem with NumPy-based array operations,
-offering a broader repertoire of statistics including haplotype-based selection
-scans and $F$-statistics; however, it is no longer under active development.
-\pixy \citep{korunes2021, bailey2025} addressed the important problem of missing
-data bias in estimates of $\pi$, $d_{XY}$, $F_{ST}$, Tajima's $D$, and $\theta_W$,
-but is limited to those five statistics.
-\comment{Pixy v2 now includes Tajima's D and theta. I think it is important to mention
-those as well, so I added the citation to the new version.}
-At the other end of the spectrum, \plink
-\citep{purcell2007, chang2015} and \angsd \citep{korneliussen2014} are
-high-performance C/C++ tools but are oriented toward GWAS and genotype
-likelihood workflows, respectively, rather than offering a 
-wide array of summary statistics used in evolutionary population genetics. 
-\popgenome \citep{pfeifer2014} offered a
+the early 1000 Genomes era. \angsd \citep{korneliussen2014} is a
+high-performance C/C++ tool, but it is oriented towards genotype likelihood 
+workflows and consequently has limited support for population genetics summary 
+statistics. \popgenome \citep{pfeifer2014} offered a
 comprehensive R-based toolkit but has been removed from CRAN and is no longer
-maintained. For tree sequence data, \tskit \citep{jeffery2026} provides
-exceptionally efficient computation of a general class of statistics, but
-requires data in tree sequence format rather than the VCF and Zarr formats
-that remain the standard output of variant calling pipelines. Across all of
-these tools, computation is performed on the CPU and statistics are typically
-computed one at a time across genomic windows. For large-scale projects
-involving windowed genome scans of multiple statistics across many populations,
-wall-clock times of hours to days are common. This limitation is particularly
-acute for two-locus statistics such as LD, where pairwise computations over
-variant sites are inherently $O(n^2)$ and form a bottleneck in inference
-pipelines such as \moments \citep{jouganous2017, ragsdale2019}.
+maintained. \scikitallel \citep{miles2024} brought population genetic analyses into 
+the Python ecosystem with NumPy-based array operations, offering a broad repertoire of 
+statistics including haplotype-based selection scans and $F$-statistics; however,
+it is no longer under active development. \pixy \citep{korunes2021, bailey2025} 
+addressed the important biases that missing data introduce in estimates in $\pi$, 
+$d_{XY}$, $F_{ST}$, Tajima's $D$, and $\theta_W$, at the cost of computational 
+performance. \clam is a very recent tool that focuses on faster computation of 
+three statistics ($\pi$, $d_{XY}$, and $F_{ST}$) while accounting for missingness 
+due to differences in callability across samples \citep{mirchandani2025}. Lastly,
+\tskit \citep{jeffery2026} provides exceptionally efficient computation of a general 
+class of statistics, which is enabled by a completely different data format, 
+the tree sequence, rather than the traditional genotype matrix (for example, 
+in VCF or plink formats). However, the tree sequences need to be first inferred 
+from the genotype data itself, a process which may not be feasible for some datasets,
+for example due to the lack of phased haplotypes.
+
+Computation of population genetic statistics across all these earlier tools is 
+performed on the CPU, and statistics are typically computed sequentially along 
+genomic windows. For large-scale projects involving windowed genome scans of tens 
+of statistics across many populations, wall-clock times of hours to days are common. 
+This limitation is particularly acute for two-locus statistics such as LD, where 
+pairwise computations over variant sites are inherently $O(n^2)$ and form a bottleneck
+ in inference pipelines such as \moments \citep{jouganous2017, ragsdale2019}.
 Table~\ref{tab:competitors} summarizes the coverage and capabilities
 of the most commonly used CPU tools alongside \pggpu (this work).
 
@@ -246,6 +250,8 @@ for its LD-statistics parsing module (Supplementary Figure~\ref{fig:moments_ld})
  & Python      & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & ---        & ---        & --- \\
 \pixy \citep{korunes2021}
  & Python      & $\sim$     & $\sim$     & ---        & ---        & ---        & ---        & ---        & --- \\
+\clam \citep{mirchandani2025}
+ & Python      & $\sim$     & $\sim$     & ---        & ---        & ---        & ---        & ---        & --- \\
 \pggpu (this work)
  & Python / CUDA & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
 \bottomrule
@@ -265,9 +271,9 @@ applied to specific problems in population genetics---notably forward-in-time
 simulation \citep{gofish2017} and demographic inference via diffusion
 approximations \citep{gutenkunst2021} or gradient-based optimization \citep{Terhorst2025} 
 ---no general-purpose GPU-accelerated library for computing population genetics summary 
-statistics from empirical data has been available.
+statistics from empirical data has been developed.
 
-Here we present \pggpu, a Python library that leverages NVIDIA GPUs via \cupy
+Here, we present \pggpu, a Python library that leverages NVIDIA GPUs via \cupy
 \citep{cupy2017} to compute a comprehensive catalog of population genetics
 statistics. \pggpu implements over 70 functions spanning diversity, divergence,
 the site frequency spectrum, linkage disequilibrium, haplotype-based selection
