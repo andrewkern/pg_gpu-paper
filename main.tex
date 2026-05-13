@@ -216,7 +216,7 @@ genotype matrix; \pggpu accepts both via \texttt{HaplotypeMatrix.from\_ts}
 (rightmost column). \moments \citep{jouganous2017} is omitted because
 its scope is downstream demographic inference rather than genome-scale
 summary-statistic computation; \pggpu provides a drop-in replacement
-for its LD-statistics parsing module (Figure~\ref{fig:moments_ld}).}
+for its LD-statistics parsing module (Supplementary Figure~\ref{fig:moments_ld}).}
 \label{tab:competitors}
 \setlength{\tabcolsep}{3pt}
 \resizebox{\textwidth}{!}{%
@@ -409,31 +409,10 @@ work that \scikitallel's C extensions already vectorize. On a
 estimates of $\pi$, an $R_0$-style heterozygosity ratio, Tajima's $D$,
 and LD decay overlay to within line width while the windowed scan and
 LD-decay computation run $5.8\times$ and $254\times$ faster
-(Figure~\ref{fig:overview}); a controlled cross-check on simulated
+(Supplementary Figure~\ref{fig:overview}); a controlled cross-check on simulated
 two-population \msprime data reproduces the same speedup pattern
 against both \scikitallel and \plinktwo
 (Supplementary Figure~\ref{fig:simbench}).
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=0.95\textwidth]{scikit_allel_comparison.png}
-\caption{Equivalence and speedup of \pggpu vs.\ \scikitallel on a
-single chromosome of phased Ag1000G data. Top three panels:
-nucleotide diversity ($\pi$), $R_0$, and Tajima's $D$ in 50\,kb
-windows along the chromosome, computed by both tools---curves
-overlay to within line width. Lower panel: LD-decay (mean $r^2$ vs
-pairwise distance) showing identical estimates from \scikitallel
-and the two \pggpu LD estimators (Rogers--Huff and unbiased
-$\sigma_d^2$). Horizontal bars at the bottom: wall-clock times for
-the windowed scan ($5.8\times$ faster) and LD-decay computation
-($254\times$ faster).}
-\comment{Since the lines overlap in the first three panels, I wonder
-if we should make the scikit-allele line a different color so see if we
-can increase the contrast between the two a little bit. They would still
-overlap, maybe we can see the outline of the scikit-allele line a bit more.
-This is also a PNG image, so it might be easier to see in the SVG/PDF anyway.}
-\label{fig:overview}
-\end{figure}
 
 \begin{figure}[ht]
 \centering
@@ -455,42 +434,22 @@ simulation (105 LD statistics, 10 recombination-distance bins, 10
 replicates of 1\,Mb) \pggpu agrees with \moments-LD to a maximum
 relative error of $1.8\times 10^{-11}$ while cutting per-replicate
 parsing time from $256$\,s to $0.2$\,s---a $1{,}756 \pm 410\times$
-speedup (Figure~\ref{fig:moments_ld})---making whole-genome LD-based
-inference tractable on standard hardware; a per-population-count
-breakdown is given in Supplementary Figure~\ref{fig:moments_ld_breakdown}.
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=0.85\textwidth]{moments_ld_validation.pdf}
-\caption{\pggpu LD parsing accuracy and speed against
-\moments. Left: raw two-locus LD-statistic sums ($D^2$, $Dz$,
-$\pi_2$, $H$) for a four-population split simulation (10 replicates;
-105 statistics). Right: per-replicate parsing time on
-\moments CPU vs.\ \pggpu GPU ($1{,}756 \pm 410\times$ speedup).}
-\label{fig:moments_ld}
-\end{figure}
+speedup (Supplementary Figure~\ref{fig:moments_ld})---making
+whole-genome LD-based inference tractable on standard hardware; a
+per-population-count breakdown is given in Supplementary
+Figure~\ref{fig:moments_ld_breakdown}.
 
 Runtime scaling was characterized along two axes with \msprime
 simulations \citep{baumdicker2022}: sample size (100 to 100{,}000
 haplotypes at a fixed 100{,}000 variants) and variant count ($\sim
 10^3$ to $\sim 10^6$ segregating sites at a fixed 200 haplotypes, with
-realistic LD; Figure~\ref{fig:scaling}). Per-site statistics scale
-linearly on both axes and finish in well under a second across the
-tested range; two-locus statistics show the expected $O(n^2)$ growth
-with sample size for Garud's $H$ and a sub-quadratic profile for
-$Z_{nS}$ (a sampled-pairs estimator). At the largest configuration
-tested (100{,}000 haplotypes $\times$ 100{,}000 variants) every
-single-pass statistic completes in under ten seconds on one A100.
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=\textwidth]{scaling_combined.pdf}
-\caption{Runtime scaling with sample size (left, fixed at 100{,}000
-variants) and variant count (right, fixed at 200 haplotypes). Both
-axes are log-scaled. \texttt{windowed\_3} is a fused windowed kernel
-that computes $\pi$, $\theta_W$, and Tajima's $D$ in a single pass.}
-\label{fig:scaling}
-\end{figure}
+realistic LD; Supplementary Figure~\ref{fig:scaling}). Per-site
+statistics scale linearly on both axes and finish in well under a
+second across the tested range; two-locus statistics show the expected
+$O(n^2)$ growth with sample size for Garud's $H$ and a sub-quadratic
+profile for $Z_{nS}$ (a sampled-pairs estimator). At the largest
+configuration tested (100{,}000 haplotypes $\times$ 100{,}000 variants)
+every single-pass statistic completes in under ten seconds on one A100.
 
 \subsection*{Benchmarks and Applications}
 
@@ -544,7 +503,7 @@ per-window local PCA, MDS using Frobenius distance between window covariances,
 and corner detection---identifies genomic intervals whose structure deviates
 from the genome-wide pattern. As a sanity check with a controlled signal we
 applied it to a coalescent simulation \citep{baumdicker2022} containing a
-single hard sweep (Figure~\ref{fig:lostruct}): the embedding cleanly separates
+single hard sweep (Supplementary Figure~\ref{fig:lostruct}): the embedding cleanly separates
 neutral, linked, and sweep windows and the leading MDS axis tracks the
 localized peak of Garud's $H_{12}$ at the sweep focal site.
 Applied to the West African subset of Ag1000G 3R (100 diploids / 200 phased
@@ -554,16 +513,6 @@ recovered, and the corner-1 region near $\sim$28\,Mb overlaps with a localized
 peak in the companion Garud's $H_{12}$ track (the \textit{Cyp6}/\textit{Gste}
 insecticide-resistance locus on 3R), a known sweep target in West African
 \emph{An.\ gambiae}.
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=0.95\textwidth]{local_pca.png}
-\caption{Local PCA (\lostruct) on a coalescent simulation containing a
-hard sweep at 5\,Mb. Left: MDS embedding of windowed PCA distances,
-colored by k-means regime (neutral, linked, sweep). Right: MDS axis
-1 (top) and Garud's $H_{12}$ (bottom) along the chromosome.}
-\label{fig:lostruct}
-\end{figure}
 
 \begin{figure}[ht]
 \centering
@@ -752,6 +701,37 @@ Figure~\ref{fig:speedups}.}
 
 \begin{figure}[ht]
 \centering
+\includegraphics[width=0.95\textwidth]{scikit_allel_comparison.png}
+\caption{Equivalence and speedup of \pggpu vs.\ \scikitallel on a
+single chromosome of phased Ag1000G data. Top three panels:
+nucleotide diversity ($\pi$), $R_0$, and Tajima's $D$ in 50\,kb
+windows along the chromosome, computed by both tools---curves
+overlay to within line width. Lower panel: LD-decay (mean $r^2$ vs
+pairwise distance) showing identical estimates from \scikitallel
+and the two \pggpu LD estimators (Rogers--Huff and unbiased
+$\sigma_d^2$). Horizontal bars at the bottom: wall-clock times for
+the windowed scan ($5.8\times$ faster) and LD-decay computation
+($254\times$ faster).}
+\comment{Since the lines overlap in the first three panels, I wonder
+if we should make the scikit-allele line a different color so see if we
+can increase the contrast between the two a little bit. They would still
+overlap, maybe we can see the outline of the scikit-allele line a bit more.
+This is also a PNG image, so it might be easier to see in the SVG/PDF anyway.}
+\label{fig:overview}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\textwidth]{scaling_combined.pdf}
+\caption{Runtime scaling with sample size (left, fixed at 100{,}000
+variants) and variant count (right, fixed at 200 haplotypes). Both
+axes are log-scaled. \texttt{windowed\_3} is a fused windowed kernel
+that computes $\pi$, $\theta_W$, and Tajima's $D$ in a single pass.}
+\label{fig:scaling}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
 \includegraphics[width=0.85\textwidth]{accuracy_vs_plink_pca.pdf}
 \caption{Per-axis correspondence of \pggpu PCA scores against \plinktwo
 on simulated data (800 haplotypes, 19{,}470 biallelic variants,
@@ -771,6 +751,17 @@ missing-data rate). The estimator is unbiased across missing rates
 from 0 to 60\%, mirroring the per-site valid-sample-count handling
 implemented for all single-population diversity estimators.}
 \label{fig:missing_bias}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.85\textwidth]{moments_ld_validation.pdf}
+\caption{\pggpu LD parsing accuracy and speed against
+\moments. Left: raw two-locus LD-statistic sums ($D^2$, $Dz$,
+$\pi_2$, $H$) for a four-population split simulation (10 replicates;
+105 statistics). Right: per-replicate parsing time on
+\moments CPU vs.\ \pggpu GPU ($1{,}756 \pm 410\times$ speedup).}
+\label{fig:moments_ld}
 \end{figure}
 
 \begin{figure}[ht]
@@ -800,6 +791,16 @@ parsers produce numerically identical outputs across all 9 LD
 statistics shown, confirming \pggpu can serve as a transparent
 drop-in replacement for the \texttt{moments.LD} parsing module.}
 \label{fig:moments_ld_decay}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.95\textwidth]{local_pca.png}
+\caption{Local PCA (\lostruct) on a coalescent simulation containing a
+hard sweep at 5\,Mb. Left: MDS embedding of windowed PCA distances,
+colored by k-means regime (neutral, linked, sweep). Right: MDS axis
+1 (top) and Garud's $H_{12}$ (bottom) along the chromosome.}
+\label{fig:lostruct}
 \end{figure}
 
 \clearpage
