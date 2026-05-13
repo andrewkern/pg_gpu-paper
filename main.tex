@@ -97,10 +97,12 @@
 \author[1, 2]{Angel G. Rivera-Col\'{o}n}
 \author[1, 2]{Ananya Kapoor}
 \author[3]{Kevin Korfmann}
+\author[4]{Murillo F. Rodrigues}
 \author[1, 2, *]{Andrew D. Kern}
 \affil[1]{\small{University of Oregon, Institute of Ecology and Evolution}}
 \affil[2]{\small{University of Oregon, Department of Biology}}
 \affil[3]{\small{University of Pennsylvania, Department of Biology}}
+\affil[4]{\small{Oregon Health \& Science University, Division of Genetics}}
 \affil[*]{\small{Corresponding author: \href{mailto:adkern@uoregon.edu}{adkern@uoregon.edu}}}
 
 \date{\small{\today{}}}
@@ -127,8 +129,8 @@ statistics as fused CUDA kernels on NVIDIA GPUs. \pggpu covers eleven
 categories spanning diversity and neutrality tests, divergence,
 admixture, the site-frequency spectrum, linkage disequilibrium,
 haplotype-based selection scans, dimensionality reduction (PCA,
-randomised PCA, local PCA / \lostruct), distance distributions,
-relatedness, resampling, and a generalised weighted-SFS framework for
+randomized PCA, local PCA / \lostruct), distance distributions,
+relatedness, resampling, and a generalized weighted-SFS framework for
 custom $\theta$ estimators. On the full Ag1000G Phase 3 chromosome 3R
 arm (2{,}940 haplotypes, 10.9 million variants) \pggpu agrees with
 \scikitallel and \plinktwo to machine precision while delivering a
@@ -136,11 +138,7 @@ median $139\times$ and maximum $1{,}096\times$ speedup. For
 the multi-population LD statistics used by \moments for demographic inference,
 \pggpu is a drop-in replacement that yields a $\sim$1{,}750-fold
 speedup over the native implementation. Whole chromosome arm scans, \lostruct screens, and calculation 
-% NSP 8-May-26: pg_gpu doesn't do the demographic inference (ODE solver), and
-% the optimization for demographic inference *will* take a long time outside of
-% the tiny models we're using, so let's keep this to what we actually do (stats
-% computation)
-of LD statistics for demographic inference complete on a single NVIDIA A100 in
+of LD statistics complete on a single NVIDIA A100 in
 seconds to a few minutes.
 
 \noindent\textbf{Availability and Implementation:} \pggpu is open
@@ -150,9 +148,13 @@ tutorials are at \url{https://github.com/kr-colab/pg_gpu}.
 
 \noindent\textbf{Contact:} \href{mailto:adkern@uoregon.edu}{adkern@uoregon.edu}
 
-\noindent\textbf{Supplementary Information:} Supplementary figures,
-the full statistic catalog with primary references, and per-population
-moments LD-parsing breakdown are available at the journal website.
+\noindent\textbf{Supplementary Information:} An extended description of
+the design and implementation, the full statistic catalog with primary
+references, an extended description of the API and features, numerical
+accuracy comparisons against \scikitallel, \plinktwo, and \moments, a
+worked \moments-LD demographic-inference example, and supplementary
+figures (including the per-population moments LD-parsing breakdown) are
+available at the journal website.
 \end{abstract}
 
 \section*{Introduction}
@@ -198,7 +200,7 @@ wall-clock times of hours to days are common. This limitation is particularly
 acute for two-locus statistics such as LD, where pairwise computations over
 variant sites are inherently $O(n^2)$ and form a bottleneck in inference
 pipelines such as \moments \citep{jouganous2017, ragsdale2019}.
-Table~\ref{tab:competitors} summarises the coverage and capabilities
+Table~\ref{tab:competitors} summarizes the coverage and capabilities
 of the most commonly used CPU tools alongside \pggpu (this work).
 
 \begin{table}[ht]
@@ -214,7 +216,7 @@ genotype matrix; \pggpu accepts both via \texttt{HaplotypeMatrix.from\_ts}
 (rightmost column). \moments \citep{jouganous2017} is omitted because
 its scope is downstream demographic inference rather than genome-scale
 summary-statistic computation; \pggpu provides a drop-in replacement
-for its LD-statistics parsing module (Figure~\ref{fig:moments_ld}).}
+for its LD-statistics parsing module (Supplementary Figure~\ref{fig:moments_ld}).}
 \label{tab:competitors}
 \setlength{\tabcolsep}{3pt}
 \resizebox{\textwidth}{!}{%
@@ -270,9 +272,8 @@ Here we present \pggpu, a Python library that leverages NVIDIA GPUs via \cupy
 statistics. \pggpu implements over 70 functions spanning diversity, divergence,
 the site frequency spectrum, linkage disequilibrium, haplotype-based selection
 scans, admixture statistics, PCA, and relatedness---covering the large majority
-of statistics in routine use. The library introduces fused CUDA kernels --- that is
-combining GPU operations --- to compute multiple statistics 
-in a single pass over the data, and implements the
+of statistics in routine use. The library uses fused CUDA kernels --- kernels that compute
+many related statistics in a single pass over the data --- and implements the
 generalized $\theta$-estimation framework of \citet{achaz2009} to efficiently derive all
 standard diversity and neutrality test statistics from a single site frequency
 spectrum computation. \pggpu also provides a drop-in replacement for the LD-statistics parsing
@@ -285,155 +286,60 @@ open source and freely available at
 
 \section*{Design and Implementation}
 
-\pggpu is implemented in Python on top of the \cupy NVIDIA GPU
-array library \citep{cupy2017}, with around 50 custom CUDA kernels
-written as \texttt{cupy.RawKernel} extensions and dense linear-algebra
-operations dispatched to \cublas via \cupy. The package depends only on
-\cupy \citep{cupy2017}, \numpy \citep{harris2020},
-\scipy \citep{virtanen2020}, \scikitallel \citep{miles2024},
-\msprime \citep{baumdicker2022}, and \zarr. \pggpu is distributed via a
-\pixi environment that pins a CUDA 12 build of \cupy together
-with all Python dependencies, so a complete analysis stack can be
-installed with a single command.
+\pggpu is a pure-Python library built on \cupy \citep{cupy2017}, with
+around 50 custom CUDA kernels (\texttt{cupy.RawKernel}) and dense
+linear algebra dispatched to \cublas; it depends only on \cupy,
+\numpy \citep{harris2020}, \scipy \citep{virtanen2020}, \scikitallel
+\citep{miles2024}, \msprime \citep{baumdicker2022}, and \zarr, and is
+distributed as a \pixi environment so the full analysis stack installs
+with one command. Two thin wrapper
+classes---\texttt{HaplotypeMatrix} for phased haplotypes and
+\texttt{GenotypeMatrix} for unphased diploid genotypes---carry data
+through every analysis path; either can be built from a tree sequence
+\citep{jeffery2026}, a Zarr store (\biotzarr/\vcz \citep{czech2024vcz}
+or \scikitallel layouts), or an in-memory \numpy array, and moves
+between CPU and GPU backings transparently.
 
-\subsection*{Core data abstractions}
-
-Two thin wrapper classes carry data through every analysis path. The
-\texttt{HaplotypeMatrix} stores phased haplotypes as an
-$n_{\mathrm{hap}}\times n_{\mathrm{var}}$ 8-bit integer array (with $-1$
-denoting missing genotypes), variant positions, and optional named
-sample sets. The companion \texttt{GenotypeMatrix} stores unphased
-diploid genotypes in a $n_{\mathrm{var}}\times n_{\mathrm{samp}}$
-\comment{the HapMatrix is described as haps x vars. GenMatrix is described
-as vars x samps. Are the data structures also like that? I can't recall. If not,
-I would make them both uniform to haps/samps x vars.}
-8-bit unsigned integer layout for kernels whose arithmetic naturally factorizes over
-the genotype tabulation $(n_{AA}, n_{Aa}, n_{aa})$. Both classes
-retain a single canonical buffer per object and route between CPU
-(\numpy) and GPU (\cupy) backings transparently via a \texttt{device}
-property, so the same user-facing call works whether the caller has
-a tree-sequence \citep{jeffery2026}
-(\texttt{HaplotypeMatrix.from\_ts}), a Zarr store (\texttt{from\_zarr},
-supporting both \biotzarr/\vcz \citep{czech2024vcz} and \scikitallel
-\citep{miles2024} layouts), or an in-memory \numpy array
-\citep{harris2020}.
-
-\subsection*{Fused kernels}
-
-Most population-genetics statistics decompose into per-site or
-% NSP 8-May-26: what does "bandwidth" mean here?
-per-pair reductions whose CPU implementations are bandwidth-bound:
-each pass over the haplotype matrix reads tens of gigabytes of memory
-to emit a handful of summary scalars. \pggpu takes advantage of this by writing
-\emph{fused} kernels that read each input element once and emit
-\emph{any subset} of a related family of statistics from registers
-in a single launch. The user-facing entry point
-\texttt{windowed\_analysis} accepts a Python list of statistic names
-and dispatches the request to a covering set of \emph{fused} kernels:
- a single-population kernel produces any combination of
-$\pi$, $\theta_W$, $\theta_H$, Tajima's $D$, Fay \& Wu's
-$H$, the maximum DAF estimator,
-segregating-site counts, and singleton counts; a two-population
-kernel additionally produces Hudson's $F_{ST}$, Weir--Cockerham
-$F_{ST}$, $d_{XY}$, and $d_a$. Statistics that depend on
-haplotype-pattern hashing (Garud's $H_1$, $H_{12}$, $H_{123}$,
-$H_2/H_1$) and scatter-add reductions (mean nSL, DAF histogram,
-$\mu_\text{SFS}$, per-window $Z_{nS}$ and $\omega$, $\mu_{\mathrm{LD}}$,
-SNP-distance moments) reuse the same window-binning infrastructure
-through dedicated kernel families. Two-locus statistics ($D^2$,
-$Dz$, $\pi_2$, $r^2$, $D'$, Pearson $r$) share a count-based kernel design
-that takes the four haplotype-pair counts $(n_{AB}, n_{Ab}, n_{aB},
-n_{ab})$ and the sample-size vector and emits any subset of the
-scalar formulas in double precision in a single thread per output.
-
-\subsection*{Memory-aware chunking}
-
-A naive single-launch fused kernel materialises a transposed copy of
-the matrix in a working type (typically 8-bit integer or 32-bit float), which can
-exceed GPU memory at biobank scales. \pggpu computes a chunk size at
-runtime from the free-memory query %\texttt{cp.cuda.Device().mem\_info}
-and dispatches to a chunked variant when the projected working set
-exceeds 70\,\% of free memory. The chunked path tiles the variant
-axis, calls the same kernels per chunk, and accumulates partial sums
-to the final result.
-%---numerics are bit-identical to the single-pass path. % NSP: this is the minimum viable condition, not worth advertising
-This was sufficient to keep the full 10.9-million-variant
-Ag1000G arm in a single A100 GPU (80 GB).
-
-\subsection*{Missing data, accessibility, and span normalization}
-
-% NSP 8-May-26: "opposite sides" reads a bit weird here---these are ratios, not
-% (in)equalities. Have rephrased.
-% NSP 8-May-26: "per-site formulas" makes it sound like we are averaging ratios,
-% so I've edited to make it clear we're averaging numerator/denominator separately.
-% I changed "per-site formulas" to "single-locus ratios" --- I think this is correct?
-Missing data and accessibility enter the estimators through separate terms of
-the single-locus ratios. For the numerator, every diversity, divergence,
-and SFS estimator uses a per-site count of non-missing samples, so
-allele-frequency estimates and their variance terms remain unbiased when
-the fraction of called samples varies across sites. For the denominator, 
-an optional \texttt{AccessibleMask} (a boolean array over genomic
-coordinates, supplied directly or loaded from a BED file) replaces the
-nominal window width with the callable-bases count in each window. This
-matters for length-normalised statistics ($\pi$, $\theta_W$, $d_{XY}$ per
-site): without a mask, gaps, low-mappability regions, and repeat-masked
-positions enter the denominator and silently deflate per-base values in
-poorly accessible regions, distorting windowed scans even when every
-per-site number is itself unbiased. The per-site valid-sample-count
-handling keeps the diversity estimator unbiased across missing-data
-rates from 0 to 60\,\%
-(Supplementary Figure~\ref{fig:missing_bias}).
-\comment{To describe this a bit more, it
-might be good to mention that this is, from my understanding, the same
-or similar setup as the one used by scikit allel.}
-
-\subsection*{Generalized $\theta$ framework}
-
-% NSP 8-May-26: this is described under "features", and seems
-% redundant to explain here as well ...
-
-Single-population diversity estimators and neutrality tests are
-implemented as instances of the general weighted-SFS estimator
-$\hat\theta = \sum_{\xi} w_\xi \xi p_\xi$
-\citep{achaz2009}. \pggpu computes the SFS once per population
-and obtains $\pi$, $\theta_W$, $\theta_H$, $\theta_L$, the maximum
-DAF estimator and so on by re-weighting; the variance of any
-linear combination of these estimators is computed from the
-\citet{achaz2009} Eq.~9 $\alpha_n, \beta_n$ coefficients with cached
-weight pairs, so Tajima's $D$, Fay \& Wu's $H^*$, and Zeng's $E$
-share the same null distribution under arbitrary missing-data
-patterns.
-
-% NSP 8-May-26: Is it worth having a section on the two-locus stats,
-% which is where we see the biggest gains? This feels like an omission,
-% as there's engineering that went into memory management/efficiency for these.
-% If space is an issue, I'd prioritize these over the generalized-theta,
-% which is computationally trivial (if statistically more interesting)
-
-\subsection*{Interfacing with downstream tools}
-
-\pggpu provides a drop-in replacement for the LD-parsing module of
-\moments \citep{ragsdale2019}: the
-\texttt{compute\_ld\_statistics} function consumes the same VCF /
-recombination-map / population-file inputs and returns a dictionary
-in \moments' canonical schema \texttt{(bins, sums, stats, pops)}, so
-existing infrastructure (i.e. \texttt{moments.LD.Parsing.bootstrap\_data},
-\texttt{optimize\_log\_lbfgsb}, and uncertainty quantification) accept the
-output unchanged. Local-PCA / \lostruct \citep{li2019} is implemented
-as a single batched-Gram eigendecomposition over windowed views of
-the matrix, followed by MDS on inter-window distances; corner
-identification uses Welzl's minimum-enclosing-circle algorithm
-\citep{welzl1991}.
-% NSP 8-May-26: I'm not sure we need to describe the machinery in lostruct
-% aside from the batched-Gram eigendecomposition. This seems like unnecessary
-% detail that isn't particular to pg_gpu or GPU acceleration
+The performance of \pggpu rests on a single observation: most
+population-genetics statistics are per-site or per-pair reductions
+that spend most of their CPU time reading the genotype matrix from
+memory rather than doing arithmetic. \pggpu therefore uses
+\emph{fused} kernels: one kernel reads each entry of the matrix once
+and computes whichever statistics from a related family the user asked
+for. A single entry point, \texttt{windowed\_analysis}, takes a list
+of statistics and runs the fewest such kernels that together cover the
+request. If the data are too large to fit in GPU memory at once, the
+same kernels run in chunks whose size is picked automatically, so a
+whole chromosome arm of $\sim$10 million variants fits on one A100
+without any tuning by the user. The biggest speedups are for two-locus
+(linkage-disequilibrium) statistics, where the cost grows
+quadratically with the number of variant sites; the same kernels also
+back a drop-in replacement for the \moments-LD parser
+\citep{ragsdale2019} and a GPU version of local PCA / \lostruct
+\citep{li2019}. Full details---the array layouts, the fused-kernel
+families, how missing data and accessibility masks are handled, the
+chunking rule, and the downstream interfaces---are in the
+Supplementary Material (Extended Design and Implementation).
 
 \section*{Features}
 
-\pggpu provides a comprehensive catalog of population genetics statistics
-organized into eleven categories (Table~\ref{tab:features}). A complete listing of
-all implemented statistics with citations is provided in the Supplementary
-Material (Table~\ref{tab:full_catalog}).
+\pggpu provides a comprehensive catalog of population-genetics
+statistics organized into eleven categories
+(Table~\ref{tab:features}): classic estimators ($\pi$, $\theta_W$,
+Tajima's $D$, Hudson and Weir--Cockerham $F_{ST}$, $d_{XY}$, the
+unfolded and joint SFS, Patterson's $f_2$/$f_3$/$D$, iHS, nSL, Garud's
+$H$) alongside several less commonly supported additions useful in
+modern workflows---the Schrider et al.~\citep{schrider2018}
+distance-based two-population statistics, the RAiSD
+$\mu$ components~\citep{alachiotis2018}, the diplotype-frequency
+spectrum, and a \texttt{FrequencySpectrum} interface to the
+Achaz~\citep{achaz2009} weighted-SFS framework for custom $\theta$
+estimators. Almost every statistic is also reachable through
+\texttt{windowed\_analysis}, the fused-kernel entry point for genome
+scans (Design and Implementation). A complete listing of all
+implemented statistics with primary references, together with an
+extended description of the API and resampling utilities, is provided
+in the Supplementary Material (Table~\ref{tab:full_catalog}).
 
 \begin{table}[ht]
 \centering
@@ -451,7 +357,7 @@ Linkage disequilibrium & 10+ & $r^2$, $D^2$, $D_z$, $\pi_2$, $Z_{nS}$, $\omega$,
 Selection scans & 9 & iHS, nSL, XP-EHH, XP-nSL, Garud's $H_{1/12/123}$, $H_{2}/H_{1}$, EHH decay \\
 Site frequency spectrum & 6+ & Unfolded, folded, scaled, joint (2-pop) SFS \\
 Admixture / $F$-statistics & 6+ & Patterson's $F_2$, $F_3$, $D$ (ABBA-BABA), block-jackknife wrappers \\
-Dimensionality reduction & 5 & PCA, randomised PCA, PCoA, local PCA / \lostruct, corner detection \\
+Dimensionality reduction & 5 & PCA, randomized PCA, PCoA, local PCA / \lostruct, corner detection \\
 Relatedness / kinship & 2 & GRM (GCTA-equivalent), IBS (PLINK-equivalent) \\
 Distance distribution & 4 & Hamming distance, variance, skewness, kurtosis \\
 Resampling & 2 & Block jackknife, block bootstrap (incl.\ ratio-of-sums) \\
@@ -459,101 +365,6 @@ Generalized $\theta$ framework & -- & \texttt{FrequencySpectrum} class: custom w
 \bottomrule
 \end{tabular}
 \end{table}
-
-% NSP 8-May-24: I'm not sure about discussing the API in this much detail: it reads like a docs page. 
-% I don't think this is of general interest (aside from a brief description of the
-% features we support) unlike the computational details. So I'd lean towards
-% having this entire section consist of a summary table, and bringing anything
-% with interesting computational details into its own section above.  Features
-% that aren't novel (block bootstrapping, Achaz, etc) can be mentioned in passing.
-% Alternatively, move the detail here into a supplement.
-
-The user-facing API mirrors the table organization: each category
-corresponds to a Python module
-(\texttt{pg\_gpu.diversity}, \texttt{pg\_gpu.divergence},
-\texttt{pg\_gpu.selection}, and so on), and each statistic is a function
-that takes a \texttt{HaplotypeMatrix} or \texttt{GenotypeMatrix} as its
-first argument and returns a \numpy array. Population labels assigned
-once via \texttt{load\_pop\_file} are accepted by every statistic that
-needs them, i.e., \texttt{divergence.fst\_hudson(h, "pop1", "pop2")} and
-\texttt{diversity.tajimas\_d(h, population="pop1")} share the same
-calling convention. Where a statistic is defined for both phased and
-diploid input, the same call dispatches on container type:
-\texttt{selection.garud\_h} computes haplotype-frequency $H$ statistics
-% NSP 8-May-24: "diplotype" == "two phased haplotypes" which I don't think is
-% what is meant here---change back if I'm wrong.
-on a \texttt{HaplotypeMatrix} and the unphased diploid analogue on a
-\texttt{GenotypeMatrix} without separate method names. Missing data and
-accessibility are handled automatically.
-%NSP 8-May-24: I don't understand what this means so I'm commenting it out---
-%what are "calibrated rates" referring to? We're not calculating rates.
-%Missing data and accessibility are handled automatically: the same call
-%returns calibrated rates whether the matrix is raw or has an attached
-%\texttt{AccessibleMask} (see Design and Implementation).
-
-\pggpu implements classic population genetics statistics---$\pi$, $\theta_W$,
-Tajima's $D$, Hudson and Weir--Cockerham $F_{ST}$, $d_{XY}$, the
-unfolded and joint SFS, Patterson's $f_2$/$f_3$/$D$, iHS, nSL, and
-Garud's $H$---together with several less commonly supported additions
-that are useful in modern workflows. Schrider et al.~\citep{schrider2018}
-distance-based two-population statistics ($Z_x$, $dd$, $dd$ rank) and
-the RAiSD $\mu_{\mathrm{LD}}$ component~\citep{alachiotis2018} are
-provided as ordinary functions; Patterson's $f$-statistics \citep{patterson2012} return
-per-site numerators and denominators separately so that
-ratio-of-sums standard errors can be computed correctly with
-resampling (below). The pairwise-distance moments of
-\citet{schrider2018} and the diplotype-frequency spectrum used for
-sweep-classifier features are also exposed directly.
-
-The \texttt{FrequencySpectrum} class provides a
-direct interface to the Achaz~\citep{achaz2009} weighted-SFS
-formulation, that supports arbitrary $\theta$ estimators or neutrality tests outside the
-named catalog. A \texttt{FrequencySpectrum} built from a
-\texttt{HaplotypeMatrix} computes the SFS once on the GPU and then
-exposes three operations: \texttt{theta(weights)} evaluates any
-linear estimator $\hat\theta = \sum_\xi w_\xi \xi p_\xi$ given either
-a name from the built-in dictionary (\texttt{pi}, \texttt{watterson},
-\texttt{theta\_h}, \texttt{theta\_l}, \texttt{eta1}, etc.) or a
-user-supplied callable that returns a weight vector;
-\texttt{neutrality\_test} pairs any two estimators into a normalised
-$D$-style test statistic with a variance computed from the cached
-$\alpha_n,\beta_n$ coefficients of \citet{achaz2009}, so a custom
-neutrality test built around an unusual weighting (e.g.,
-higher order powers of the frequency spectrum) is one call rather than a hand-derived
-variance formula; and \texttt{project} produces a hypergeometrically
-sub-sampled SFS at any target sample size~\citep{gutenkunst2009},
-allowing comparisons across populations with different sample sizes
-and bridging to demographic-inference pipelines that operate on a
-projected SFS.
-
-Almost every statistic in Table~\ref{tab:features} is also accessible
-through \texttt{windowed\_analysis}, a single entry point for genome
-scans that takes a list of statistic names, a window definition (in
-either base pairs or SNPs), and a list of populations, and returns a
-\texttt{pandas.DataFrame} \citep{mckinney2010} with one row per window. Internally,
-\texttt{windowed\_analysis} routes the request through the fused-kernel
-families described in Design and Implementation, so a typical scan that
-asks for $\pi$, $\theta_W$, Tajima's $D$, $F_{ST}$, $d_{XY}$, Garud's
-$H_{12}$, and mean nSL---seven statistics spanning four kernel
-families---runs in a small constant number of GPU launches over the
-matrix rather than seven independent passes.
-Local PCA / \lostruct~\citep{li2019} is exposed through the same
-interface: and returns a
-\texttt{LocalPCAResult} with per-window eigenvalues and eigenvectors,
-which the companion functions \texttt{pc\_dist} and \texttt{corners}
-transform into the inter-window distance matrix and outlier-window
-identifications shown in Figure~\ref{fig:lostruct_ag1000g}.
-
-% NSP 8-May-26: let's avoid jargon like "user-facing surface" --- this sounds
-% super LLM generated
-General-purpose \texttt{block\_jackknife} and \texttt{block\_bootstrap}
-estimators~\citep{busing1999, efron1993} provide a general means to get 
-calibrated standard errors and confidence intervals
-for any scalar aggregate of windowed output. Both accept a tuple of
-(numerator, denominator) block arrays in addition to a single array,
-so ratio-of-sums quantities such as Patterson's $f_3$, $D$, and
-$F_{ST}$ are resampled with the same block assignments on the two
-sides of the ratio without manual bookkeeping.
 
 \section*{Results}
 
@@ -566,7 +377,7 @@ mosquitoes (2{,}940 haplotypes) sampled from 22 populations across
 sub-Saharan Africa. Chromosome arm 3R alone carries 10.9 million
 phased, biallelic SNPs after filtering and accessibility masking; the
 53\,Mb arm contains multiple known segregating inversions and
-well-characterised insecticide-resistance sweeps, and is among the
+well-characterized insecticide-resistance sweeps, and is among the
 most variable autosomal regions sequenced in any eukaryote. The
 combination of extreme levels of segregating variation, non-trivial sample size, 
 natural missingness, and rich population structure makes it a stringent and
@@ -576,31 +387,252 @@ demographic-inference cross-checks against \moments---we pair
 Ag1000G with \msprime \citep{baumdicker2022} simulations so each
 result is supported by both empirical and simulation evidence.
 
+\subsection*{Accuracy, performance, and scaling}
+
+We first verified that \pggpu reproduces established CPU
+implementations: every statistic with a counterpart in \scikitallel,
+\plinktwo, or \moments matches the reference to within floating-point
+error, with per-statistic comparisons reported in the Supplementary
+Material (Table~\ref{tab:accuracy}, Supplementary
+Figures~\ref{fig:plink_pca} and~\ref{fig:moments_ld_decay}).
+
+Across the 23 Ag1000G 3R statistics with a directly comparable
+\scikitallel implementation (2{,}940 haplotypes, 10.9 million
+variants), the median \pggpu speedup is $139\times$ and the maximum
+$1{,}096\times$ (Weir--Cockerham $F_{ST}$; Figure~\ref{fig:speedups},
+Supplementary Figure~\ref{fig:walltimes}): divergence and pairwise-LD
+kernels gain the most ($600$--$1{,}100\times$), single-population
+diversity and SFS statistics $130$--$380\times$, and haplotype-based
+selection scans $9$--$56\times$, the last bounded by per-haplotype
+work that \scikitallel's C extensions already vectorize. On a
+50\,kb-windowed slice of the same data, \pggpu and \scikitallel
+estimates of $\pi$, an $R_0$-style heterozygosity ratio, Tajima's $D$,
+and LD decay overlay to within line width while the windowed scan and
+LD-decay computation run $5.8\times$ and $254\times$ faster
+(Supplementary Figure~\ref{fig:overview}); a controlled cross-check on simulated
+two-population \msprime data reproduces the same speedup pattern
+against both \scikitallel and \plinktwo
+(Supplementary Figure~\ref{fig:simbench}).
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.85\textwidth]{benchmark_speedups.pdf}
+\caption{\pggpu speedup over \scikitallel on Ag1000G Phase 3 chromosome
+3R (2{,}940 haplotypes, 10.9M variants). The all-pairwise Rogers--Huff
+LD comparison is run on the first $10{,}000$ SNPs (200 haplotypes) to
+keep the \scikitallel reference tractable; all other statistics are
+on the full chromosome arm. Bars show wall-clock speedup on a single
+NVIDIA A100 GPU; orange bars indicate statistics where \scikitallel's
+existing optimized implementation limits the achievable gain
+(typically $<10\times$).}
+\label{fig:speedups}
+\end{figure}
+
+Multi-population LD parsing for demographic inference is a separate
+bottleneck \citep{ragsdale2019}. On a four-population coalescent
+simulation (105 LD statistics, 10 recombination-distance bins, 10
+replicates of 1\,Mb) \pggpu agrees with \moments-LD to a maximum
+relative error of $1.8\times 10^{-11}$ while cutting per-replicate
+parsing time from $256$\,s to $0.2$\,s---a $1{,}756 \pm 410\times$
+speedup (Supplementary Figure~\ref{fig:moments_ld})---making
+whole-genome LD-based inference tractable on standard hardware; a
+per-population-count breakdown is given in Supplementary
+Figure~\ref{fig:moments_ld_breakdown}.
+
+Runtime scaling was characterized along two axes with \msprime
+simulations \citep{baumdicker2022}: sample size (100 to 100{,}000
+haplotypes at a fixed 100{,}000 variants) and variant count ($\sim
+10^3$ to $\sim 10^6$ segregating sites at a fixed 200 haplotypes, with
+realistic LD; Supplementary Figure~\ref{fig:scaling}). Per-site
+statistics scale linearly on both axes and finish in well under a
+second across the tested range; two-locus statistics show the expected
+$O(n^2)$ growth with sample size for Garud's $H$ and a sub-quadratic
+profile for $Z_{nS}$ (a sampled-pairs estimator). At the largest
+configuration tested (100{,}000 haplotypes $\times$ 100{,}000 variants)
+every single-pass statistic completes in under ten seconds on one A100.
+
+\subsection*{Benchmarks and Applications}
+
+We illustrate two end-to-end uses of \pggpu on data and methodology
+where the GPU implementation enables an analysis that is slow or
+intractable on CPU. A third use---supplying \pggpu-computed LD
+statistics to the \moments demographic-inference workflow as a
+single-import drop-in replacement, with parameter estimates
+indistinguishable from the native parser---is described in the
+Supplementary Material (Supplementary Figure~\ref{fig:moments_inference}).
+
+\paragraph{Benchmarking a whole-arm Ag1000G genome scan.}
+Partitioning the 1{,}470 Ag1000G samples into West and East African
+groups (200 diploids / 400 phased haplotypes each) and running a full population-genetic
+scan of chromosome 3R---loading 10.9 million phased variants from
+Zarr, attaching the canonical accessibility mask, transferring to
+GPU, and computing 19 windowed statistics in 100\,kb / 10\,kb
+windows plus per-population and joint SFS---takes 168 seconds total
+wall time, of which only 30 seconds is GPU compute
+(Figure~\ref{fig:scan}). The same workflow expressed in
+\scikitallel runs in roughly 75 minutes (windowed statistics alone),
+so a single A100 reduces the population-genetic scan from over an hour
+to seconds while recovering the expected genome-wide
+signatures: $\pi$ heterogeneity, negative Tajima's $D$ consistent
+with non-equilibrium demography and selection, and elevated Hudson $F_{ST}$ between subspecies.
+\comment{Andy, you had mentioned during lab meeting that this could be
+generated from a single function once the data is loaded. Is that still
+correct? If so, I would definitely mention it here.}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\textwidth]{ag1000g_genome_scan.png}
+\caption{Whole-arm scan of Ag1000G chromosome 3R using \pggpu.
+Left column: genome-wide windowed statistics (100\,kb windows, 10\,kb
+step) including diversity ($\pi$, $\theta_W$), neutrality tests
+(Tajima's $D$, Fay \& Wu's $H^*$), divergence between West and East
+African populations (Hudson $F_{ST}$, $d_{XY}$), Garud's $H_{12}$,
+mean nSL, and segregating-site density. Right column: West African
+unfolded SFS, joint SFS heatmap (West vs.\ East), and per-step compute
+time. Total compute time is 30\,s on a single A100 GPU; total wall
+time including I/O is 168\,s.}
+\comment{For the left panel, the caption mentions 9 (1. pi, 2. theta w,
+3. Taj D, 4. F\&W H, 5. Fst, 6. Dxy, 7. H12, 8. nSL, 9. seg-site density) stats but there are 8 plots. Also, the caption does not mention the
+highlight of Gste in those left panel plots.}
+\label{fig:scan}
+\end{figure}
+
+\paragraph{Whole-genome local PCA.}
+The local-PCA / \lostruct \citep{li2019} analysis workflow---comprised of
+per-window local PCA, MDS using Frobenius distance between window covariances,
+and corner detection---identifies genomic intervals whose structure deviates
+from the genome-wide pattern. As a sanity check with a controlled signal we
+applied it to a coalescent simulation \citep{baumdicker2022} containing a
+single hard sweep (Supplementary Figure~\ref{fig:lostruct}): the embedding cleanly separates
+neutral, linked, and sweep windows and the leading MDS axis tracks the
+localized peak of Garud's $H_{12}$ at the sweep focal site.
+Applied to the West African subset of Ag1000G 3R (100 diploids / 200 phased
+haplotypes, 10.9M variants, $\sim$10{,}900 non-overlapping $1{,}000$-SNP
+windows; Figure~\ref{fig:lostruct_ag1000g}), three distinct corner clusters are
+recovered, and the corner-1 region near $\sim$28\,Mb overlaps with a localized
+peak in the companion Garud's $H_{12}$ track (the \textit{Cyp6}/\textit{Gste}
+insecticide-resistance locus on 3R), a known sweep target in West African
+\emph{An.\ gambiae}.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.95\textwidth]{ag1000g_lostruct.pdf}
+\caption{\lostruct on the West African subset of Ag1000G 3R (100
+diploids / 200 phased haplotypes, 10.9M variants, $\sim$10{,}900 non-overlapping
+$1{,}000$-SNP windows). Left: MDS embedding of windowed PCA
+distances; windows in each of three detected corner clusters are
+circled. Right: \lostruct MDS axis 1 along the chromosome (top)
+and companion Garud's $H_{12}$ track on the same windows (bottom).
+}
+\label{fig:lostruct_ag1000g}
+\end{figure}
+
+\section*{Discussion}
+
+\pggpu fills a long-standing gap in the population-genetics software
+ecosystem. Existing tools optimize specific axes---\vcftools and
+\plink for command-line access to focused sets of statistics,
+\scikitallel for a Python-native research workflow, \pixy for
+unbiased estimation under missingness, and \tskit for tree-sequence inputs,
+but none brings the full catalog of routine summary
+statistics onto modern GPU hardware. 
+% NSP 8-May-26: we're not actually stress testing this at biobank scale, so I don't think
+% we can say this (we're just going to piss off reviewers):
+% where biobank-scale analysis is otherwise prohibitively slow. 
+By unifying eleven categories of
+statistics under a single Python API on top of \cupy, \pggpu turns
+analyses that were previously hours-long batch jobs (e.g. full chromosome arm scans using
+\scikitallel) or computationally infeasible
+(chromosome-scale LD calculation using all SNP pairs) into runs of seconds to minutes on a single GPU.
+
+% NSP 8-May-26: this point is great, and might be worth hinting at more heavily earlier
+Three design choices that emerged from this work may be useful to
+other authors of GPU-accelerated scientific software. First, fused
+kernels that emit any subset of a related family of statistics from
+registers in a single launch substantially outperform sequential
+per-statistic GPU calls, because the dominant cost on this class of
+workload is reading the haplotype matrix off-RAM rather than the
+arithmetic itself. 
+% NSP 8-May-26: sentence below seems like a given when there's a finite buffer---
+% is there more to it?
+Second, memory-aware chunking that
+routes large workloads through a
+chunked variant of the same kernels which is 
+essential to handle large-scale data without user
+tuning. Third, processing windows in tiles---so that working memory
+scales with the tile size ($O(\text{tile\_size}\times n_{\text{hap}}^2)$)
+rather than with the number of windows ($O(n_{\text{windows}}\times n_{\text{hap}}^2)$)---lets
+the same code path scale from a single chromosome to a whole genome.
+
+Several limitations are worth stating. \pggpu requires an NVIDIA GPU
+because \cupy targets CUDA; ports to AMD ROCm or Apple Metal would
+require non-trivial kernel rewrites. Haplotype-pattern statistics
+that scale as $O(n_{\text{hap}}^2)$ in sample size remain bound by
+GPU memory at large scales (we tested up to 100{,}000 haplotypes);
+genuine biobank-scale sample-sizes will need additional chunked-pair
+kernels for the haplotype-pair statistics. The randomized SVD
+used for the local PCA is an approximation from an
+oversampled spectrum rather than a decomposition of the full covariance matrix;
+although a dense eigendecomposition is available when exact \lostruct outputs
+are required.
+Finally, \pggpu currently supports phased haplotypes and unphased
+diploid genotypes but does not yet handle low-coverage genotype
+likelihoods natively (cf.\ \angsd); extending the framework to
+genotype likelihoods is straightforward in principle and is
+part of planned future work.
+
+Looking forward, we see \pggpu as a foundation for two further
+directions: integration with simulation-based machine-learning
+frameworks for demographic and selection inference, where rapid
+summary-statistic computation is the bottleneck during training;
+and as a reference implementation of the Achaz \citep{achaz2009}
+weighted-SFS framework, lowering the barrier for population
+geneticists to design and validate custom test statistics. We expect
+both will broaden the set of analyses that fit comfortably within
+standard whole-genome research workflows.
+
+\section*{Availability}
+
+\pggpu is freely available at \url{https://github.com/kr-colab/pg_gpu}.
+
+\section*{Acknowledgments}
+
+TODO: Acknowledgments go here.
+
+\section*{Generative AI use}
+
+Anthropic's Claude (Opus 4.6) was used to assist in drafting and
+optimizing the fused \texttt{cupy.RawKernel} CUDA implementations
+underlying \pggpu. All model-generated kernel code was reviewed,
+profiled, and validated by the authors against appropriate
+reference implementations (Supplementary Table~\ref{tab:accuracy})
+before inclusion in the final codebase.
+
+
+\printbibliography
+
+\clearpage
+\beginsupplement
+
+\section*{Supplementary Material}
+
 \subsection*{Numerical accuracy}
 
 We validated \pggpu against \scikitallel using a 4\,Mb region of Ag1000G
 chromosome 3L (3L:1{,}000{,}000--5{,}000{,}000; 2{,}940 haplotypes after
-removing missing-data sites). For every statistic with a \scikitallel
-equivalent we observe agreement to machine precision (Table~\ref{tab:accuracy}). 
-Statistics whose estimators reduce to exact integer counts---site-frequency spectra,
-two-locus haplotype-frequency tallies (Garud's $H$), and Patterson's
+removing missing-data sites). Statistics whose estimators reduce to
+exact integer counts---site-frequency spectra, two-locus
+haplotype-frequency tallies (Garud's $H$), and Patterson's
 $f_2$---agree exactly. Statistics that involve harmonic sums or
-unbiased corrections ($\theta_W$, Tajima's $D$) differ by at most
-$\sim 5\times 10^{-4}$, consistent with reordering of double-precision
-sums under different reductions. 
-% NSP 8-May-26: I'm not sure I follow why 5e-4 is expected? Surely numeric
-% drift from summation depends on the number of terms and variation in
-% magnitude? Are we talking about relative error? Even then it seems non-trivial
-% to figure out what's expected. I'd suggest just reporting the relative error and
-% not trying to qualify it.
-A directly comparable Hudson
-$F_{ST}$ computation against \plinktwo on simulated \msprime data agrees to
-$1.7\times 10^{-8}$, and the corresponding PCA scores agree to
-$|r| > 0.88$ through PC5 (Supplementary Figure~\ref{fig:plink_pca}).
-The two-population LD-decay curves estimated by \pggpu and \moments
-on identical replicates are likewise numerically indistinguishable
-across all nine LD statistics shown
-(Supplementary Figure~\ref{fig:moments_ld_decay}).
+unbiased corrections ($\theta_W$, Tajima's $D$) agree to a relative
+error of at most $5\times 10^{-4}$ (Table~\ref{tab:accuracy}). A
+directly comparable Hudson $F_{ST}$ computation against \plinktwo on
+simulated \msprime data agrees to $1.7\times 10^{-8}$, and the
+corresponding PCA scores agree to $|r| > 0.88$ through PC5
+(Figure~\ref{fig:plink_pca}). The two-population LD-decay curves
+estimated by \pggpu and \moments on identical replicates are likewise
+numerically indistinguishable across all nine LD statistics shown
+(Figure~\ref{fig:moments_ld_decay}).
 
 \begin{table}[ht]
 \centering
@@ -644,341 +676,7 @@ Admixture & Patterson's $F_2$ (mean) & $2.278 \times 10^{-4}$ & $2.278 \times 10
 \end{tabular}
 \end{table}
 
-\subsection*{Performance and scaling}
-
-Across the 23 Ag1000G 3R statistics with a directly comparable
-\scikitallel implementation (2{,}940 haplotypes, 10.9 million
-variants), the median \pggpu speedup is $139\times$ and the maximum
-is $1{,}096\times$ for Weir--Cockerham $F_{ST}$
-(Figure~\ref{fig:speedups}). Divergence and pairwise-LD kernels gain
-the most ($600$--$1{,}100\times$), single-population diversity and
-SFS statistics gain $130$--$380\times$, and haplotype-based selection
-scans (e.g., EHH decay, Garud's $H$, XP-EHH, iHS, nSL) gain
-$9$--$56\times$---bounded by the per-haplotype work that
-\scikitallel's C extensions already vectorize efficiently.
-Figure~\ref{fig:overview} shows the equivalence and the speedup
-together on a 50\,kb-windowed slice of the same data: $\pi$, an
-$R_0$-style heterozygosity ratio, Tajima's $D$, and the LD-decay
-curve overlay to within line width across windowing engines while
-the windowed scan and LD-decay computation run $5.8\times$ and
-$254\times$ faster respectively. Absolute wall-clock comparisons per-statistic
-and are reported in Supplementary Figure~\ref{fig:walltimes}.
-A controlled cross-check on simulated two-population \msprime data
-recovers the same speedup pattern against both \scikitallel and
-\plinktwo (Supplementary Figure~\ref{fig:simbench}), confirming that
-the Ag1000G gains are not artefacts of the empirical dataset.
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=0.95\textwidth]{scikit_allel_comparison.png}
-\caption{Equivalence and speedup of \pggpu vs.\ \scikitallel on a
-single chromosome of phased Ag1000G data. Top three panels:
-nucleotide diversity ($\pi$), $R_0$, and Tajima's $D$ in 50\,kb
-windows along the chromosome, computed by both tools---curves
-overlay to within line width. Lower panel: LD-decay (mean $r^2$ vs
-pairwise distance) showing identical estimates from \scikitallel
-and the two \pggpu LD estimators (Rogers--Huff and unbiased
-$\sigma_d^2$). Horizontal bars at the bottom: wall-clock times for
-the windowed scan ($5.8\times$ faster) and LD-decay computation
-($254\times$ faster).}
-\comment{Since the lines overlap in the first three panels, I wonder
-if we should make the scikit-allele line a different color so see if we
-can increase the contrast between the two a little bit. They would still
-overlap, maybe we can see the outline of the scikit-allele line a bit more.
-This is also a PNG image, so it might be easier to see in the SVG/PDF anyway.}
-\label{fig:overview}
-\end{figure}
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=0.85\textwidth]{benchmark_speedups.pdf}
-\caption{\pggpu speedup over \scikitallel on Ag1000G Phase 3 chromosome
-3R (2{,}940 haplotypes, 10.9M variants). The all-pairwise Rogers--Huff
-LD comparison is run on the first $10{,}000$ SNPs (200 haplotypes) to
-keep the \scikitallel reference tractable; all other statistics are
-on the full chromosome arm. Bars show wall-clock speedup on a single
-NVIDIA A100 GPU; orange bars indicate statistics where \scikitallel's
-existing optimised implementation limits the achievable gain
-(typically $<10\times$).}
-\label{fig:speedups}
-\end{figure}
-
-Beyond windowed scans, multi-population LD parsing for
-demographic inference is a major bottleneck for \moments-LD
-\citep{ragsdale2019}. On a four-population coalescent simulation
-(105 LD statistics across 10 recombination-distance bins from a
-flat $\rho=1.5\times10^{-8}$ map, 10 replicates of 1\,Mb) \pggpu
-agrees with \moments-LD to a maximum relative error of
-$1.8\times 10^{-11}$ while reducing per-replicate parsing time from
-$256$\,s to $0.2$\,s---a $1{,}756 \pm 410\times$ speedup
-(Figure~\ref{fig:moments_ld}), making whole-genome LD-based
-inference tractable on standard hardware. A per-population-count
-breakdown on a separate, bp-binned stress test
-(Supplementary Figure~\ref{fig:moments_ld_breakdown}) shows
-$193\times$, $288\times$, and $246\times$ speedups for 2-, 3-, and
-4-population statistics respectively. 
-%NSP 8-May-26: It's not clear to me what this means, and it sounds LLM-y, so
-%I'm commenting it out:
-%the gap to the aggregate 1{,}756$\times$ reflects that the aggregate uses the
-%slower r-binned \moments code path on $20\times$ more sequence, not a
-%reconciliation of the per-count numbers.
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=0.85\textwidth]{moments_ld_validation.pdf}
-\caption{\pggpu LD parsing accuracy and speed against
-\moments. Left: raw two-locus LD-statistic sums ($D^2$, $Dz$,
-$\pi_2$, $H$) for a four-population split simulation (10 replicates;
-105 statistics). Right: per-replicate parsing time on
-\moments CPU vs.\ \pggpu GPU ($1{,}756 \pm 410\times$ speedup).}
-\label{fig:moments_ld}
-\end{figure}
-
-\comment{I moved some text around for clarity here.}
-Runtime scaling was characterized along two independent axes using
-\msprime simulations (Figure~\ref{fig:scaling}; \cite{baumdicker2022}).
-For sample-size scaling we held the variant count fixed at 100{,}000 and varied the
-number of samples (haplotypes) from 100 to 100{,}000; for variant-count scaling
-we held sample size at 200 samples and varied the span of the simulated
-sequence length to carry from $\sim 10^3$ to $\sim 10^6$ segregating sites,
-with realistic LD structure. Per-site
-statistics scale linearly on both axes and complete in well under a
-second across the tested range. Two-locus statistics show the
-expected $O(n^2)$ scaling with sample size for Garud's $H$ and a
-sub-quadratic profile for $Z_{nS}$, which uses a sampled-pairs
-estimator. At the largest tested configuration (100{,}000 haplotypes,
-100{,}000 variants) all single-pass statistics complete in under
-ten seconds on a single A100.
-% NSP 8-May-26: I'm commenting this out because it sounds hyperbolic---the
-% UKBB has ~500 million SNPs, so I don't think we're stress-testing in that regime.
-%, putting biobank-scale whole-genome scans within reach.
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=\textwidth]{scaling_combined.pdf}
-\caption{Runtime scaling with sample size (left, fixed at 100{,}000
-variants) and variant count (right, fixed at 200 haplotypes). Both
-axes are log-scaled. \texttt{windowed\_3} is a fused windowed kernel
-that computes $\pi$, $\theta_W$, and Tajima's $D$ in a single pass.}
-\label{fig:scaling}
-\end{figure}
-
-\subsection*{Applications}
-
-We illustrate three end-to-end uses of \pggpu, each on data and
-methodology where the GPU implementation enables an analysis that
-is slow or intractable on CPU.
-
-% NSP 8-May-26: this seems like a benchmark, not an application
-\paragraph{Whole-arm Ag1000G genome scan.}
-Partitioning the 1{,}470 Ag1000G samples into West and East African
-groups (200 diploids / 400 phased haplotypes each) and running a full population-genetic
-scan of chromosome 3R---loading 10.9 million phased variants from
-Zarr, attaching the canonical accessibility mask, transferring to
-GPU, and computing 19 windowed statistics in 100\,kb / 10\,kb
-windows plus per-population and joint SFS---takes 168 seconds total
-wall time, of which only 30 seconds is GPU compute
-(Figure~\ref{fig:scan}). The same workflow expressed in
-\scikitallel runs in roughly 75 minutes (windowed statistics alone),
-so a single A100 reduces the population-genetic scan from over an hour
-to seconds while recovering the expected genome-wide
-signatures: $\pi$ heterogeneity, negative Tajima's $D$ consistent
-with non-equilibrium demography and selection, and elevated Hudson $F_{ST}$ between subspecies.
-\comment{Andy, you had mentioned during lab meeting that this could be
-generated from a single function once the data is loaded. Is that still
-correct? If so, I would definitely mention it here.}
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=\textwidth]{ag1000g_genome_scan.png}
-\caption{Whole-arm scan of Ag1000G chromosome 3R using \pggpu.
-Left column: genome-wide windowed statistics (100\,kb windows, 10\,kb
-step) including diversity ($\pi$, $\theta_W$), neutrality tests
-(Tajima's $D$, Fay \& Wu's $H^*$), divergence between West and East
-African populations (Hudson $F_{ST}$, $d_{XY}$), Garud's $H_{12}$,
-mean nSL, and segregating-site density. Right column: West African
-unfolded SFS, joint SFS heatmap (West vs.\ East), and per-step compute
-time. Total compute time is 30\,s on a single A100 GPU; total wall
-time including I/O is 168\,s.}
-\comment{For the left panel, the caption mentions 9 (1. pi, 2. theta w,
-3. Taj D, 4. F\&W H, 5. Fst, 6. Dxy, 7. H12, 8. nSL, 9. seg-site density) stats but there are 8 plots. Also, the caption does not mention the
-highlight of Gste in those left panel plots.}
-\label{fig:scan}
-\end{figure}
-
-\paragraph{Whole-genome local PCA.}
-The local-PCA / \lostruct \citep{li2019} analysis workflow---comprised of
-per-window local PCA, MDS using Frobenius distance between window covariances,
-and corner detection---identifies genomic intervals whose structure deviates
-from the genome-wide pattern. As a sanity check with a controlled signal we
-applied it to a coalescent simulation \citep{baumdicker2022} containing a
-single hard sweep (Figure~\ref{fig:lostruct}): the embedding cleanly separates
-neutral, linked, and sweep windows and the leading MDS axis tracks the
-localized peak of Garud's $H_{12}$ at the sweep focal site.
-Applied to the West African subset of Ag1000G 3R (100 diploids / 200 phased
-haplotypes, 10.9M variants, $\sim$10{,}900 non-overlapping $1{,}000$-SNP
-windows; Figure~\ref{fig:lostruct_ag1000g}), three distinct corner clusters are
-recovered, and the corner-1 region near $\sim$28\,Mb overlaps with a localized
-peak in the companion Garud's $H_{12}$ track (the \textit{Cyp6}/\textit{Gste}
-insecticide-resistance locus on 3R), a known sweep target in West African
-\emph{An.\ gambiae}.
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=0.95\textwidth]{local_pca.png}
-\caption{Local PCA (\lostruct) on a coalescent simulation containing a
-hard sweep at 5\,Mb. Left: MDS embedding of windowed PCA distances,
-coloured by k-means regime (neutral, linked, sweep). Right: MDS axis
-1 (top) and Garud's $H_{12}$ (bottom) along the chromosome.}
-\label{fig:lostruct}
-\end{figure}
-
-\begin{figure}[ht]
-\centering
-\includegraphics[width=0.95\textwidth]{ag1000g_lostruct.pdf}
-\caption{\lostruct on the West African subset of Ag1000G 3R (100
-diploids / 200 phased haplotypes, 10.9M variants, $\sim$10{,}900 non-overlapping
-$1{,}000$-SNP windows). Left: MDS embedding of windowed PCA
-distances; windows in each of three detected corner clusters are
-circled. Right: \lostruct MDS axis 1 along the chromosome (top)
-and companion Garud's $H_{12}$ track on the same windows (bottom).
-% NSP 8-May-26: I tried to make this flow better but gave up---I don't think
-% we need to discuss the machinery in the fig caption:
-%The GPU-accelerated local PCA implemented in \pggpu makes this whole-arm analysis
-%tractable on a single A100 by bounding peak GPU memory with a per-window working set.
-}
-\label{fig:lostruct_ag1000g}
-\end{figure}
-
-% NSP 8-May-26: I'm not sure what we're trying to show here, because we're not
-% implementing any of the ODE-solving infrastructure on a GPU.  Why would we
-% expect to see different results if the statistics are identical (which we've
-% already shown)? As this is in the "Applications" section, it'd make sense to
-% have an example on real data here, but otherwise I'm not sure what this adds.
-\paragraph{LD-statistics for demographic inference.}
-A three-population isolation-with-migration model fit using
-\pggpu-calculated LD statistics inside the standard \moments workflow
-recovers parameter estimates indistinguishable from those obtained
-with the native \texttt{moments.LD} parser
-(Figure~\ref{fig:moments_inference}), at the speedups already shown in
-Figure~\ref{fig:moments_ld}. The GPU-accelerated statistics may be integrated
-into existing \moments code by changing a single import.
-
-\begin{figure}[ht]
-\centering
-\begin{minipage}{0.4\textwidth}
-\centering
-\includegraphics[width=\textwidth]{moments_3pop_true_model.png}
-\subcaption{Three-population isolation model used for simulation.}
-\end{minipage}\hfill
-\begin{minipage}{0.4\textwidth}
-\centering
-\includegraphics[width=\textwidth,height=0.78\textheight,keepaspectratio]{moments_3pop_fitted_vs_observed.png}
-\subcaption{LD decay curves under the inferred model (\pggpu-calculated,
-blue; \moments-parsed, green; truth, dashed orange) and
-empirical bin estimates (black points). Inference using the two
-parsers is indistinguishable. \comment{First, we should play around
-with the scaling of this fig. I reduced its size to fit it on the page,
-but it is now too small. Also, I am only seeing the solid dashed and blue lines.}}
-\end{minipage}
-\caption{Demographic inference using \pggpu as the
-\texttt{moments.LD} parser. The drop-in replacement preserves
-parameter estimates while yielding the speedups in
-Figure~\ref{fig:moments_ld}.}
-\label{fig:moments_inference}
-\end{figure}
-
-\section*{Discussion}
-
-\pggpu fills a long-standing gap in the population-genetics software
-ecosystem. Existing tools optimize specific axes---\vcftools and
-\plink for command-line access to focused sets of statistics,
-\scikitallel for a Python-native research workflow, \pixy for
-unbiased estimation under missingness, and \tskit for tree-sequence inputs,
-but none brings the full catalog of routine summary
-statistics onto modern GPU hardware. 
-% NSP 8-May-26: we're not actually stress testing this at biobank scale, so I don't think
-% we can say this (we're just going to piss off reviewers):
-% where biobank-scale analysis is otherwise prohibitively slow. 
-By unifying eleven categories of
-statistics under a single Python API on top of \cupy, \pggpu turns
-analyses that were previously hours-long batch jobs (e.g. full chromosome arm scans using
-\scikitallel) or computationally infeasible
-(chromosome-scale LD calculation using all SNP pairs) into runs of seconds to minutes on a single GPU.
-
-% NSP 8-May-26: this point is great, and might be worth hinting at more heavily earlier
-Three design choices that emerged from this work may be useful to
-other authors of GPU-accelerated scientific software. First, fused
-kernels that emit any subset of a related family of statistics from
-registers in a single launch substantially outperform sequential
-per-statistic GPU calls, because the dominant cost on this class of
-workload is reading the haplotype matrix off-RAM rather than the
-arithmetic itself. 
-% NSP 8-May-26: sentence below seems like a given when there's a finite buffer---
-% is there more to it?
-Second, memory-aware chunking that
-auto-detects free GPU memory during runtime and routes large workloads through a
-chunked variant of the same kernels (with bit-identical numerics) is 
-% NSP 8-May-26: the "bit-identical" thing is a sanity check, no? I don't think this is
-% worth emphasizing outside of the "sanity check" part of the benchmarks. If
-% there's more to it and this is actually not a sanity check we should say why.
-essential to handle large-scale data without user
-tuning. Third, a streaming dispatcher that bounds per-tile working
-memory at $O(\text{tile\_size}\times n_{\text{hap}}^2)$ rather than
-$O(n_{\text{windows}}\times n_{\text{hap}}^2)$ lets the same code
-path scale from a single chromosome to a whole genome.
-
-Several limitations are worth stating. \pggpu requires an NVIDIA GPU
-because \cupy targets CUDA; ports to AMD ROCm or Apple Metal would
-require non-trivial kernel rewrites. Haplotype-pattern statistics
-that scale as $O(n_{\text{hap}}^2)$ in sample size remain bound by
-GPU memory at large scales (we tested up to 100{,}000 haplotypes);
-genuine biobank-scale sample-sizes will need additional chunked-pair
-kernels for the haplotype-pair statistics. The randomised SVD
-used for the local PCA is an approximation from an
-oversampled spectrum rather than a decomposition of the full covariance matrix;
-although a dense eigendecomposition is available when exact \lostruct outputs
-are required.
-Finally, \pggpu currently supports phased haplotypes and unphased
-diploid genotypes but does not yet handle low-coverage genotype
-likelihoods natively (cf.\ \angsd); extending the framework to
-genotype likelihoods is straightforward in principle and is
-part of planned future work.
-
-Looking forward, we see \pggpu as a foundation for two further
-directions: integration with simulation-based machine-learning
-frameworks for demographic and selection inference, where rapid
-summary-statistic computation is the bottleneck during training;
-and as a reference implementation of the Achaz \citep{achaz2009}
-weighted-SFS framework, lowering the barrier for population
-geneticists to design and validate custom test statistics. We expect
-both will broaden the set of analyses that fit comfortably within
-standard whole-genome research workflows.
-
-\section*{Availability}
-
-\pggpu is freely available at \url{https://github.com/kr-colab/pg_gpu}.
-
-\section*{Acknowledgments}
-
-TODO: Acknowledgments go here.
-
-\section*{Generative AI use}
-
-Anthropic's Claude (Opus 4.6) was used to assist in drafting and
-optimizing the fused \texttt{cupy.RawKernel} CUDA implementations
-underlying \pggpu. All model-generated kernel code was reviewed,
-profiled, and validated by the authors against appropriate
-reference implementations (Table~\ref{tab:accuracy}) before 
-inclusion in the final codebase. 
-
-
-\printbibliography
-
 \clearpage
-\beginsupplement
-
-\section*{Supplementary Material}
 
 \begin{figure}[ht]
 \centering
@@ -1003,6 +701,37 @@ Figure~\ref{fig:speedups}.}
 
 \begin{figure}[ht]
 \centering
+\includegraphics[width=0.95\textwidth]{scikit_allel_comparison.png}
+\caption{Equivalence and speedup of \pggpu vs.\ \scikitallel on a
+single chromosome of phased Ag1000G data. Top three panels:
+nucleotide diversity ($\pi$), $R_0$, and Tajima's $D$ in 50\,kb
+windows along the chromosome, computed by both tools---curves
+overlay to within line width. Lower panel: LD-decay (mean $r^2$ vs
+pairwise distance) showing identical estimates from \scikitallel
+and the two \pggpu LD estimators (Rogers--Huff and unbiased
+$\sigma_d^2$). Horizontal bars at the bottom: wall-clock times for
+the windowed scan ($5.8\times$ faster) and LD-decay computation
+($254\times$ faster).}
+\comment{Since the lines overlap in the first three panels, I wonder
+if we should make the scikit-allele line a different color so see if we
+can increase the contrast between the two a little bit. They would still
+overlap, maybe we can see the outline of the scikit-allele line a bit more.
+This is also a PNG image, so it might be easier to see in the SVG/PDF anyway.}
+\label{fig:overview}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\textwidth]{scaling_combined.pdf}
+\caption{Runtime scaling with sample size (left, fixed at 100{,}000
+variants) and variant count (right, fixed at 200 haplotypes). Both
+axes are log-scaled. \texttt{windowed\_3} is a fused windowed kernel
+that computes $\pi$, $\theta_W$, and Tajima's $D$ in a single pass.}
+\label{fig:scaling}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
 \includegraphics[width=0.85\textwidth]{accuracy_vs_plink_pca.pdf}
 \caption{Per-axis correspondence of \pggpu PCA scores against \plinktwo
 on simulated data (800 haplotypes, 19{,}470 biallelic variants,
@@ -1022,6 +751,17 @@ missing-data rate). The estimator is unbiased across missing rates
 from 0 to 60\%, mirroring the per-site valid-sample-count handling
 implemented for all single-population diversity estimators.}
 \label{fig:missing_bias}
+\end{figure}
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.85\textwidth]{moments_ld_validation.pdf}
+\caption{\pggpu LD parsing accuracy and speed against
+\moments. Left: raw two-locus LD-statistic sums ($D^2$, $Dz$,
+$\pi_2$, $H$) for a four-population split simulation (10 replicates;
+105 statistics). Right: per-replicate parsing time on
+\moments CPU vs.\ \pggpu GPU ($1{,}756 \pm 410\times$ speedup).}
+\label{fig:moments_ld}
 \end{figure}
 
 \begin{figure}[ht]
@@ -1053,6 +793,248 @@ drop-in replacement for the \texttt{moments.LD} parsing module.}
 \label{fig:moments_ld_decay}
 \end{figure}
 
+\begin{figure}[ht]
+\centering
+\includegraphics[width=0.95\textwidth]{local_pca.png}
+\caption{Local PCA (\lostruct) on a coalescent simulation containing a
+hard sweep at 5\,Mb. Left: MDS embedding of windowed PCA distances,
+colored by k-means regime (neutral, linked, sweep). Right: MDS axis
+1 (top) and Garud's $H_{12}$ (bottom) along the chromosome.}
+\label{fig:lostruct}
+\end{figure}
+
+\clearpage
+
+\subsection*{Demographic inference with \pggpu LD statistics}
+
+Because \pggpu's \texttt{compute\_ld\_statistics} returns LD-statistic
+sums in \moments' canonical schema (Design and Implementation), it can
+replace the native \texttt{moments.LD} parser in an existing inference
+pipeline by changing a single import. We verified this end to end on a
+three-population isolation-with-migration model: fitting the model with
+\pggpu-calculated LD statistics inside the standard \moments workflow
+recovers parameter estimates indistinguishable from those obtained with
+the native parser (Figure~\ref{fig:moments_inference}), while computing
+the input statistics at the speedups reported in
+Figure~\ref{fig:moments_ld}.
+
+\begin{figure}[ht]
+\centering
+\begin{minipage}{0.4\textwidth}
+\centering
+\includegraphics[width=\textwidth]{moments_3pop_true_model.png}
+\subcaption{Three-population isolation model used for simulation.}
+\end{minipage}\hfill
+\begin{minipage}{0.4\textwidth}
+\centering
+\includegraphics[width=\textwidth,height=0.78\textheight,keepaspectratio]{moments_3pop_fitted_vs_observed.png}
+\subcaption{LD decay curves under the inferred model (\pggpu-calculated,
+blue; \moments-parsed, green; truth, dashed orange) and
+empirical bin estimates (black points). Inference using the two
+parsers is indistinguishable. \comment{First, we should play around
+with the scaling of this fig. I reduced its size to fit it on the page,
+but it is now too small. Also, I am only seeing the solid dashed and blue lines.}}
+\end{minipage}
+\caption{Demographic inference using \pggpu as the
+\texttt{moments.LD} parser. The drop-in replacement preserves
+parameter estimates while yielding the speedups in
+Figure~\ref{fig:moments_ld}.}
+\label{fig:moments_inference}
+\end{figure}
+
+\clearpage
+
+\subsection*{Extended Design and Implementation}
+
+\subsubsection*{Core data abstractions}
+
+Two thin wrapper classes carry data through every analysis path. The
+\texttt{HaplotypeMatrix} stores phased haplotypes as an
+$n_{\mathrm{hap}}\times n_{\mathrm{var}}$ 8-bit integer array (with $-1$
+denoting a missing genotype), variant positions, and optional named
+sample sets. The companion \texttt{GenotypeMatrix} stores unphased
+diploid genotypes as an $n_{\mathrm{var}}\times n_{\mathrm{samp}}$
+\comment{the HapMatrix is described as haps x vars. GenMatrix is described
+as vars x samps. Are the data structures also like that? I can't recall. If not,
+I would make them both uniform to haps/samps x vars.}
+8-bit unsigned-integer array---a layout chosen so that kernels whose
+arithmetic factorizes over the genotype tabulation $(n_{AA}, n_{Aa},
+n_{aa})$ read contiguous memory. Both classes retain a single canonical
+buffer per object and route between CPU (\numpy) and GPU (\cupy)
+backings transparently via a \texttt{device} property, so the same call
+works whether the caller has a tree sequence \citep{jeffery2026}
+(\texttt{HaplotypeMatrix.from\_ts}), a Zarr store (\texttt{from\_zarr},
+supporting both \biotzarr/\vcz \citep{czech2024vcz} and \scikitallel
+\citep{miles2024} layouts), or an in-memory \numpy array
+\citep{harris2020}.
+
+\subsubsection*{Fused kernels}
+
+Most population-genetics statistics decompose into per-site or per-pair
+reductions whose CPU implementations spend most of their time moving
+data rather than computing: each pass over the haplotype matrix reads
+tens of gigabytes of memory to emit a handful of summary scalars.
+\pggpu takes advantage of this by writing \emph{fused} kernels that
+read each input element once and emit \emph{any subset} of a related
+family of statistics in a single pass. The entry point \texttt{windowed\_analysis}
+accepts a list of statistic names and dispatches the request to the
+smallest covering set of fused kernels: a single-population kernel
+produces any combination of $\pi$, $\theta_W$, $\theta_H$, Tajima's
+$D$, Fay \& Wu's $H$, the maximum DAF estimator, segregating-site
+counts, and singleton counts; a two-population kernel additionally
+produces Hudson's $F_{ST}$, Weir--Cockerham $F_{ST}$, $d_{XY}$, and
+$d_a$. Statistics that depend on haplotype-pattern hashing (Garud's
+$H_1$, $H_{12}$, $H_{123}$, $H_2/H_1$) and on scatter-add reductions
+(mean nSL, the DAF histogram, $\mu_{\mathrm{SFS}}$, per-window $Z_{nS}$
+and $\omega$, $\mu_{\mathrm{LD}}$, SNP-distance moments) reuse the same
+window-binning infrastructure through dedicated kernel families.
+
+\subsubsection*{Memory-aware chunking}
+
+A single-launch fused kernel materializes a transposed working copy of
+the matrix---an 8-bit integer or 32-bit float array, depending on the
+kernel---that can exceed GPU memory for large datasets. \pggpu projects
+this working-set size at runtime from a free-memory query and routes
+the workload through a chunked variant of the same kernels whenever it
+would exceed 70\,\% of free GPU memory. The chunked path tiles the
+variant axis, calls the same kernels per chunk, and accumulates partial
+sums to the final result, producing numerically identical output to the
+single-pass path. This was sufficient to keep the full
+10.9-million-variant Ag1000G arm on a single 80\,GB A100 with no user
+tuning.
+
+\subsubsection*{Missing data, accessibility, and span normalization}
+
+Missing data and accessibility enter the single-locus ratios through
+separate terms. Every diversity, divergence, and SFS estimator uses a
+per-site count of non-missing samples in the numerator, so
+allele-frequency estimates and their variance terms remain unbiased
+when the called-sample fraction varies across sites. For the
+denominator, an optional \texttt{AccessibleMask}---a boolean array over
+genomic coordinates, supplied directly or loaded from a BED
+file---replaces the nominal window width with the callable-bases count
+in each window. Without such a mask, gaps, low-mappability regions, and
+repeat-masked positions enter the denominator and silently deflate
+per-base values for length-normalized statistics ($\pi$, $\theta_W$,
+$d_{XY}$ per site) in poorly accessible regions, distorting windowed
+scans even when every per-site number is itself unbiased. The per-site
+valid-sample-count handling keeps the diversity estimator unbiased
+across missing-data rates from 0 to 60\,\% (Supplementary
+Figure~\ref{fig:missing_bias}).
+\comment{To describe this a bit more, it
+might be good to mention that this is, from my understanding, the same
+or similar setup as the one used by scikit allel.}
+
+\subsubsection*{Two-locus statistics}
+
+Two-locus (linkage-disequilibrium) statistics are the most expensive
+members of the catalog and the ones \pggpu accelerates most, since the
+pairwise computation over variant sites is inherently
+$O(n_{\mathrm{var}}^2)$. \pggpu factors every two-locus statistic
+through a single count-based kernel: for each pair of sites it forms
+the four haplotype-pair counts $(n_{AB}, n_{Ab}, n_{aB}, n_{ab})$ and
+the per-pair non-missing sample count, and a kernel with one thread per
+site pair emits any requested subset of $D^2$, $Dz$, $\pi_2$, $r^2$,
+$D'$, and Pearson $r$ in double precision. Windowed two-locus summaries
+(Kelly's $Z_{nS}$, Kim \& Nielsen's $\omega$, RAiSD's $\mu_{\mathrm{LD}}$)
+reuse the window-binning machinery of the fused kernels; $Z_{nS}$
+additionally offers a sampled-pairs estimator that trades the full
+$O(n_{\mathrm{var}}^2)$ sum for a sub-quadratic profile
+(Figure~\ref{fig:scaling}). The same count-based path underlies the
+\moments-LD drop-in replacement (below), where the largest single
+speedup ($\sim$1{,}750$\times$) is realized.
+
+\subsubsection*{Interfacing with downstream tools}
+
+\pggpu provides a drop-in replacement for the LD-parsing module of
+\moments \citep{ragsdale2019}: the \texttt{compute\_ld\_statistics}
+function consumes the same VCF / recombination-map / population-file
+inputs and returns a dictionary in \moments' canonical schema
+\texttt{(bins, sums, stats, pops)}, so existing infrastructure
+(\texttt{moments.LD.Parsing.bootstrap\_data}, \texttt{optimize\_log\_lbfgsb},
+and uncertainty quantification) accepts the output unchanged. Local PCA
+/ \lostruct \citep{li2019} is implemented as a single batched-Gram
+eigendecomposition over windowed views of the matrix; the subsequent
+inter-window MDS and corner-detection steps follow \citet{li2019}.
+
+\clearpage
+
+\subsection*{Extended feature description}
+
+The \pggpu API mirrors the category organization of
+Table~\ref{tab:features}: each category corresponds to a Python module
+(\texttt{pg\_gpu.diversity}, \texttt{pg\_gpu.divergence},
+\texttt{pg\_gpu.selection}, and so on), and each statistic is a
+function that takes a \texttt{HaplotypeMatrix} or
+\texttt{GenotypeMatrix} as its first argument and returns a \numpy
+array. Population labels assigned once via \texttt{load\_pop\_file} are
+accepted by every statistic that needs them, i.e.,
+\texttt{divergence.fst\_hudson(h, "pop1", "pop2")} and
+\texttt{diversity.tajimas\_d(h, population="pop1")} share the same
+calling convention. Where a statistic is defined for both phased and
+diploid input, the same call dispatches on container type:
+\texttt{selection.garud\_h} computes haplotype-frequency $H$ statistics
+on a \texttt{HaplotypeMatrix} and the unphased diploid analogue on a
+\texttt{GenotypeMatrix} without separate method names. Missing data and
+accessibility are handled automatically.
+
+Beyond the classic estimators, \pggpu exposes the
+Schrider et al.~\citep{schrider2018} distance-based two-population
+statistics ($Z_x$, $dd$, $dd$ rank) and the RAiSD
+$\mu_{\mathrm{LD}}$ component~\citep{alachiotis2018} as ordinary
+functions; Patterson's $f$-statistics~\citep{patterson2012} return
+per-site numerators and denominators separately so that ratio-of-sums
+standard errors can be computed correctly with resampling. The
+pairwise-distance moments of \citet{schrider2018} and the
+diplotype-frequency spectrum used for sweep-classifier features are
+also exposed directly.
+
+The \texttt{FrequencySpectrum} class provides a direct interface to the
+Achaz~\citep{achaz2009} weighted-SFS formulation, supporting arbitrary
+$\theta$ estimators or neutrality tests outside the named catalog. A
+\texttt{FrequencySpectrum} built from a \texttt{HaplotypeMatrix}
+computes the SFS once on the GPU and then exposes three operations:
+\texttt{theta(weights)} evaluates any linear estimator
+$\hat\theta = \sum_\xi w_\xi \xi p_\xi$ given either a name from the
+built-in dictionary (\texttt{pi}, \texttt{watterson}, \texttt{theta\_h},
+\texttt{theta\_l}, \texttt{eta1}, etc.) or a user-supplied callable
+that returns a weight vector; \texttt{neutrality\_test} pairs any two
+estimators into a normalized $D$-style test statistic with a variance
+computed from the cached $\alpha_n,\beta_n$ coefficients of
+\citet{achaz2009}, so a custom neutrality test built around an unusual
+weighting (e.g., higher-order powers of the frequency spectrum)
+is one call rather than a hand-derived variance formula; and
+\texttt{project} produces a hypergeometrically sub-sampled SFS at any
+target sample size~\citep{gutenkunst2009}, allowing comparisons across
+populations with different sample sizes and bridging to
+demographic-inference pipelines that operate on a projected SFS.
+
+Almost every statistic in Table~\ref{tab:features} is also accessible
+through \texttt{windowed\_analysis}, a single entry point for genome
+scans that takes a list of statistic names, a window definition (in
+either base pairs or SNPs), and a list of populations, and returns a
+\texttt{pandas.DataFrame}~\citep{mckinney2010} with one row per window.
+Internally, \texttt{windowed\_analysis} routes the request through the
+fused-kernel families described above, so a
+typical scan that asks for $\pi$, $\theta_W$, Tajima's $D$, $F_{ST}$,
+$d_{XY}$, Garud's $H_{12}$, and mean nSL---seven statistics spanning
+four kernel families---runs in a small constant number of GPU launches
+over the matrix rather than seven independent passes. Local PCA /
+\lostruct~\citep{li2019} is exposed through the same interface and
+returns a \texttt{LocalPCAResult} with per-window eigenvalues and
+eigenvectors, which the companion functions \texttt{pc\_dist} and
+\texttt{corners} transform into the inter-window distance matrix and
+outlier-window identifications shown in
+Figure~\ref{fig:lostruct_ag1000g}.
+
+General-purpose \texttt{block\_jackknife} and \texttt{block\_bootstrap}
+estimators~\citep{busing1999, efron1993} provide calibrated standard
+errors and confidence intervals for any scalar aggregate of windowed
+output. Both accept a tuple of (numerator, denominator) block arrays in
+addition to a single array, so ratio-of-sums quantities such as
+Patterson's $f_3$, $D$, and $F_{ST}$ are resampled with the same block
+assignments on the two sides of the ratio without manual bookkeeping.
+
 \clearpage
 
 \setlength{\LTcapwidth}{\textwidth}
@@ -1081,7 +1063,7 @@ drop-in replacement for the \texttt{moments.LD} parsing module.}
  & Fay \& Wu's $\theta_H$ & \citep{fay2000} \\
  & Zeng's $\theta_L$ & \citep{zeng2006} \\
  & Tajima's $D$ & \citep{tajima1989} \\
- & Fay \& Wu's $H$, normalised $H^*$ & \citep{zeng2006} \\
+ & Fay \& Wu's $H$, normalized $H^*$ & \citep{zeng2006} \\
  & Zeng's $E$ & \citep{zeng2006} \\
  & Zeng's $DH$ joint test & \citep{zeng2006} \\
  & Segregating sites, singletons & \citep{fu1995} \\
@@ -1143,7 +1125,7 @@ drop-in replacement for the \texttt{moments.LD} parsing module.}
 
 % Dimensionality reduction
 \multirow{5}{*}{Dim.\ reduction} & PCA & \citep{patterson2006} \\
- & Randomised PCA & \citep{halko2011} \\
+ & Randomized PCA & \citep{halko2011} \\
  & PCoA (classical MDS) & -- \\
  & \shortstack[l]{Local PCA / \lostruct \\ ~~(windowed eigendecomposition)} &
      \citep{li2019} \\
