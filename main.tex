@@ -540,12 +540,13 @@ chromosome 15 of \texttt{stdpopsim}'s \texttt{OutOfAfrica\_2T12}
 model simulated at 50{,}000 diploids per population
 (200{,}000 haplotypes, 11.6 million variants, 8\,GB on disk).
 The full scan shown in Supplementary
-Figure~\ref{fig:biobank_scan}---windowed diversity, divergence,
-Garud's $H$, marginal and joint SFS at three window sizes;
-LD decay across 16 probe regions; and a pairwise-$r^2$ heatmap
-of one 1\,Mb sub-region---finishes in about 16 minutes on a
-single A100 80\,GB. GPU memory use stays around 12\,GB regardless
-of how long the chromosome is.
+Figure~\ref{fig:biobank_scan}---windowed diversity and divergence
+across all 200{,}000 haplotypes at three window sizes, marginal
+SFS per population, plus a joint SFS, Garud's $H$, and an LD
+decay curve on smaller per-population subsamples where the
+underlying kernels cap sample size---finishes in about 16 minutes
+on a single A100 80\,GB. GPU memory use stays around 12\,GB
+regardless of how long the chromosome is.
 
 \section*{Discussion}
 
@@ -829,21 +830,25 @@ colored by k-means regime (neutral, linked, sweep). Right: MDS axis
 \caption{Biobank-scale genome scan of chromosome 15 from
 \texttt{stdpopsim}'s \texttt{OutOfAfrica\_2T12} model, simulated
 at 50{,}000 diploids per population (200{,}000 haplotypes,
-11.6 million variants). Left column, per-population windowed
-statistics: nucleotide diversity $\pi$, Watterson's $\theta_W$,
-Tajima's $D$, and normalized Fay \& Wu's $H^*$ in 100\,kb windows;
-Garud's $H_{12}$ on a 1{,}000-haplotype subsample in 10\,kb windows;
-Hudson $F_{ST}$ and $d_{XY}$ between populations. The red band
-marks the 1\,Mb sub-region used for the pairwise-$r^2$ heatmap.
-Right column, top to bottom: joint SFS on a 200-haplotype
-subsample per population; mean $r^2$ vs.\ distance between SNPs
-on common variants (minor-allele frequency $\geq 0.15$,
+11.6 million variants). Left column shows the per-window scan
+across all 100{,}000 haplotypes per population: nucleotide
+diversity $\pi$, Watterson's $\theta_W$, Tajima's $D$, and
+normalized Fay \& Wu's $H^*$ in 100\,kb windows; Hudson $F_{ST}$
+and $d_{XY}$ between populations; and Garud's $H_{12}$ in 10\,kb
+windows on a 1{,}000-haplotype subsample per population (the
+Garud kernel caps near 1{,}024 haplotypes). The red band marks
+the 1\,Mb sub-region used for the pairwise-$r^2$ heatmap. Right
+column, top to bottom: joint SFS on a 200-haplotype subsample
+per population (a full joint SFS of 100{,}000 by 100{,}000 cells
+is impractical to display); mean $r^2$ vs.\ distance between
+SNPs on common variants (minor-allele frequency $\geq 0.15$,
 5{,}000-haplotype subsample per population) pooled across 16
 probe regions tiling the chromosome; and the pairwise-$r^2$
-heatmap of the 1\,Mb sub-region with a zoom inset on the densest
-LD block. The complete scan finishes in about 16 minutes on a
-single A100 80\,GB; GPU memory use stays around 12\,GB regardless
-of chromosome length.}
+heatmap of the 1\,Mb sub-region (5{,}000-haplotype subsample,
+single population) with a zoom inset on the densest LD block.
+The complete scan finishes in about 16 minutes on a single A100
+80\,GB; GPU memory use stays around 12\,GB regardless of
+chromosome length.}
 \label{fig:biobank_scan}
 \end{figure}
 
