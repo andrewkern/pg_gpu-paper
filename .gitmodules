@@ -1,0 +1,4 @@
+[submodule "analysis"]
+	path = analysis
+	url = git@github.com:andrewkern/pg_gpu-paper-analysis.git
+	branch = main
