@@ -411,7 +411,7 @@ work that \scikitallel's C extensions already vectorize. On a
 50\,kb-windowed slice of the same data, \pggpu and \scikitallel
 estimates of $\pi$, an $R_0$-style heterozygosity ratio, Tajima's $D$,
 and LD decay overlay to within line width while the windowed scan and
-LD-decay computation run $5.8\times$ and $254\times$ faster
+LD-decay computation run $5.8\times$ and $323\times$ faster
 (Supplementary Figure~\ref{fig:overview}); a controlled cross-check on simulated
 two-population \msprime data reproduces the same speedup pattern
 against both \scikitallel and \plinktwo
@@ -478,25 +478,26 @@ so a single A100 reduces the runtime from over an hour
 to seconds while recovering the expected genome-wide
 signatures: $\pi$ heterogeneity, negative Tajima's $D$ consistent
 with non-equilibrium demography and selection, and elevated Hudson $F_{ST}$ between subspecies.
-\comment{Andy, you had mentioned during lab meeting that this could be
-generated from a single function once the data is loaded. Is that still
-correct? If so, I would definitely mention it here.}
+Every per-window panel comes from a single call to \pggpu's \texttt{windowed\_analysis}
+function, which will calculate multiple statistics (e.g., this plot) to the loaded haplotype matrix
+in a single forward pass.
 
 \begin{figure}[ht]
 \centering
 \includegraphics[width=\textwidth]{ag1000g_genome_scan.png}
 \caption{Multi-statistic scan of Ag1000G chromosome 3R using \pggpu.
-Left column: genome-wide windowed statistics (100\,kb windows, 10\,kb
-step) including diversity ($\pi$, $\theta_W$), neutrality tests
-(Tajima's $D$, Fay \& Wu's $H^*$), divergence between West and East
-African populations (Hudson $F_{ST}$, $d_{XY}$), Garud's $H_{12}$,
-mean nSL, and segregating-site density. Right column: West African
-unfolded SFS, joint SFS heatmap (West vs.\ East), and per-step compute
-time. Total compute time is 30\,s on a single A100 GPU; total wall
-time including I/O is 168\,s.}
-\comment{For the left panel, the caption mentions 9 (1. pi, 2. theta w,
-3. Taj D, 4. F\&W H, 5. Fst, 6. Dxy, 7. H12, 8. nSL, 9. seg-site density) stats but there are 8 plots. Also, the caption does not mention the
-highlight of Gste in those left panel plots.}
+Left column, eight per-window panels in 100\,kb windows with a 10\,kb
+step ($H_{12}$ uses 1{,}000-SNP windows on its own grid):
+nucleotide diversity $\pi$, Watterson's $\theta_W$, Tajima's $D$,
+Fay \& Wu's $H^*$, and Zeng's $E$ (all West Africa); Hudson $F_{ST}$
+and $d_{XY}$ between West and East Africa; and Garud's $H_{12}$
+(West Africa). The red band on every left-column panel marks the
+\textit{Gste} locus (3R:28.48--28.60\,Mb), a well-characterised insecticide-resistance
+locus that the scan recovers as coordinated drops in $\pi$ and
+$\theta_W$ with elevated $H_{12}$. Right column: West African
+unfolded SFS, joint SFS heatmap (West vs.\ East), and per-step
+compute time. Total compute time is 30\,s on a single A100 GPU;
+total wall time including I/O is 168\,s.}
 \label{fig:scan}
 \end{figure}
 
@@ -531,23 +532,22 @@ and companion Garud's $H_{12}$ track on the same windows (bottom).
 \end{figure}
 
 \paragraph{Streaming a biobank-scale genome scan.}
-At biobank sample sizes a single chromosome will not fit on a GPU
+At biobank sample sizes (e.g. $\ge 10^5$ individuals) a single chromosome will not fit on a GPU
 all at once. \pggpu handles this by reading the chromosome one
 chunk at a time; the same windowed-statistic, SFS, LD, and
-pairwise-relatedness functions used on in-memory matrices work
+pairwise-relatedness functions used on genotype matrices that can fit in memory work
 without change on the chunked input. We demonstrate this on
 chromosome 15 of \texttt{stdpopsim}'s \texttt{OutOfAfrica\_2T12}
-model simulated at 50{,}000 diploids per population
-(200{,}000 haplotypes, 11.6 million variants, 8\,GB on disk).
+model simulated at 50{,}000 diploid individuals per population
+(200{,}000 haplotypes, 11.6 million variants, $\sim 2.3$ TB on disk as a VCF).
 The full scan shown in Supplementary
 Figure~\ref{fig:biobank_scan}---windowed diversity and divergence
 across all 200{,}000 haplotypes at three window sizes, marginal
 SFS per population, a joint SFS projected from the full panel
-to a small display grid via per-variant hypergeometric sampling,
+to a smaller grid via per-variant hypergeometric sampling,
 plus Garud's $H$ and an LD decay curve on smaller per-population
-subsamples where the underlying kernels cap sample size---finishes
-in about 16 minutes on a single A100 80\,GB. GPU memory use
-stays around 12\,GB regardless of how long the chromosome is.
+subsamples---finishes in about 16 minutes on a single A100 80\,GB. 
+%GPU memory use stays around 12\,GB regardless of how long the chromosome is.
 
 \section*{Discussion}
 
@@ -558,9 +558,6 @@ ecosystem. Existing tools optimize specific axes---\vcftools and
 unbiased estimation under missingness, and \tskit for tree-sequence inputs,
 but none brings the full catalog of routine summary
 statistics onto modern GPU hardware. 
-% NSP 8-May-26: we're not actually stress testing this at biobank scale, so I don't think
-% we can say this (we're just going to piss off reviewers):
-% where biobank-scale analysis is otherwise prohibitively slow. 
 By unifying eleven categories of
 statistics under a single Python API on top of \cupy, \pggpu turns
 analyses that were previously hours-long batch jobs (e.g. full chromosome arm scans using
@@ -593,8 +590,8 @@ that scale as $O(n_{\text{hap}}^2)$ in sample size remain bound by
 GPU memory at large scales (we tested up to 100{,}000 haplotypes);
 genuine biobank-scale sample-sizes will need additional chunked-pair
 kernels for the haplotype-pair statistics. The randomized SVD
-used for the local PCA is an approximation from an
-oversampled spectrum rather than a decomposition of the full covariance matrix;
+used for the local PCA is an approximation to the
+decomposition of the full covariance matrix;
 although a dense eigendecomposition is available when exact \lostruct outputs
 are required.
 Finally, \pggpu currently supports phased haplotypes and unphased
@@ -619,7 +616,12 @@ standard whole-genome research workflows.
 
 \section*{Acknowledgments}
 
-TODO: Acknowledgments go here.
+We thank members of the Kern-Ralph co-lab for feedback on the library and the manuscript.
+
+\section*{Funding}
+
+This work was supported by NIH grants R01HG010774, R01HG012473, and R35GM148253.
+
 
 \section*{Generative AI use}
 
@@ -629,6 +631,7 @@ underlying \pggpu. All model-generated kernel code was reviewed,
 profiled, and validated by the authors against appropriate
 reference implementations (Supplementary Table~\ref{tab:accuracy})
 before inclusion in the final codebase.
+
 
 
 \printbibliography
@@ -723,7 +726,7 @@ Figure~\ref{fig:speedups}.}
 
 \begin{figure}[ht]
 \centering
-\includegraphics[width=0.95\textwidth]{scikit_allel_comparison.png}
+\includegraphics[width=0.95\textwidth]{scikit_allel_comparison.pdf}
 \caption{Equivalence and speedup of \pggpu vs.\ \scikitallel on a
 single chromosome of phased Ag1000G data. Top three panels:
 nucleotide diversity ($\pi$), $R_0$, and Tajima's $D$ in 50\,kb
@@ -733,12 +736,7 @@ pairwise distance) showing identical estimates from \scikitallel
 and the two \pggpu LD estimators (Rogers--Huff and unbiased
 $\sigma_d^2$). Horizontal bars at the bottom: wall-clock times for
 the windowed scan ($5.8\times$ faster) and LD-decay computation
-($254\times$ faster).}
-\comment{Since the lines overlap in the first three panels, I wonder
-if we should make the scikit-allele line a different color so see if we
-can increase the contrast between the two a little bit. They would still
-overlap, maybe we can see the outline of the scikit-allele line a bit more.
-This is also a PNG image, so it might be easier to see in the SVG/PDF anyway.}
+($323\times$ faster).}
 \label{fig:overview}
 \end{figure}
 
@@ -969,10 +967,10 @@ $d_{XY}$ per site) in poorly accessible regions, distorting windowed
 scans even when every per-site number is itself unbiased. The per-site
 valid-sample-count handling keeps the diversity estimator unbiased
 across missing-data rates from 0 to 60\,\% (Supplementary
-Figure~\ref{fig:missing_bias}).
-\comment{To describe this a bit more, it
-might be good to mention that this is, from my understanding, the same
-or similar setup as the one used by scikit allel.}
+Figure~\ref{fig:missing_bias}). The convention matches
+\scikitallel's windowed diversity and divergence functions, which
+use the same per-site valid-count term in the numerator and accept
+an accessibility array on the same denominator footing.
 
 \subsubsection*{Two-locus statistics}
 
