@@ -547,7 +547,7 @@ SFS per population, a joint SFS projected from the full panel
 to a smaller grid via per-variant hypergeometric sampling,
 plus Garud's $H$ and an LD decay curve on smaller per-population
 subsamples---finishes in about 16 minutes on a single A100 80\,GB. 
-%GPU memory use stays around 12\,GB regardless of how long the chromosome is.
+GPU memory use stays around 12\,GB regardless of how long the chromosome is.
 
 \section*{Discussion}
 
@@ -970,7 +970,7 @@ across missing-data rates from 0 to 60\,\% (Supplementary
 Figure~\ref{fig:missing_bias}). The convention matches
 \scikitallel's windowed diversity and divergence functions, which
 use the same per-site valid-count term in the numerator and accept
-an accessibility array on the same denominator footing.
+an accessibility array to mask sites that are flagged for exclusion.
 
 \subsubsection*{Two-locus statistics}
 
